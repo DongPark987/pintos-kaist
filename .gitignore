@@ -10,5 +10,6 @@
 # build
 */build
 
-# Ignore all object files
+.vscode/
+
 *.o
