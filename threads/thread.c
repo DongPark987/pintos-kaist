@@ -213,17 +213,18 @@ static struct thread_sleep {
   uint64_t tick;  // 깨어날 시간
 };
 
-void thread_sleep(void) {
+void thread_sleep(uint16_t ticks) {
   /* 현재 스레드를 잠재운다 */
   struct thread *t;
   t = thread_current();
   t->status = THREAD_BLOCKED;
 
   /* sleep queue에 정렬해 삽입 */
-  struct thread *pos;
-  pos = list_front(&sleep_queue);
-  while (pos) {
-    if
+  struct thread_sleep *curr;
+
+  curr = list_front(&sleep_queue);
+  while (curr) {
+    if (curr < ticks) curr = &curr->elem;
   }
 }
 
