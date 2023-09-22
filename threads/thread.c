@@ -209,25 +209,26 @@ tid_t thread_create(const char *name, int priority, thread_func *function,
 }
 
 // ! ============================
-void thread_sleep(uint16_t wake_tick) {
-  printf("sleep thread til ticks\n");
-
+void thread_sleep(uint64_t wake_tick) {
   /* 현재 스레드를 잠재운다 */
   struct thread *t;
-  t = thread_current();
-  t->status = THREAD_BLOCKED;
 
-  /* sleep queue에 정렬해 삽입 */
-  t->wake_tick = wake_tick;
+  // t->status = THREAD_BLOCKED;
+  // do_schedule()
 
-  list_insert_ordered(&sleep_queue, t, less_tick, NULL);
-
-  /* 다음 스케줄 시작 */
   enum intr_level old_level;
   ASSERT(!intr_context());
 
   old_level = intr_disable();
-  do_schedule(THREAD_READY);
+  t = thread_current();
+
+  /* sleep queue에 정렬해 삽입 */
+  t->wake_tick = wake_tick;
+  list_insert_ordered(&sleep_queue, &t->elem, less_tick, NULL);
+
+  printf("sleep thread til ticks %d %d %d\n", t->tid, t->status, t->wake_tick);
+
+  do_schedule(THREAD_BLOCKED);
   intr_set_level(old_level);
 }
 
