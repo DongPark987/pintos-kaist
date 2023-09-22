@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 /* Number of timer interrupts per second. */
-#define TIMER_FREQ 100
+#define TIMER_FREQ 100 // Time interrupts는 1초에 TIMER_FREQ만큼 발생
 
 void timer_init (void);
 void timer_calibrate (void);

@@ -47,10 +47,16 @@ struct gate {
 	uint32_t rsv2;
 };
 
-/* The Interrupt Descriptor Table (IDT).  The format is fixed by
+/* 
+인터럽트 처리를 관리하는 자료구조
+컴퓨터 시스템에서 발생하는 인터럽트와 예외에 대한 핸들러 함수를 지정
+
+
+The Interrupt Descriptor Table (IDT).  The format is fixed by
    the CPU.  See [IA32-v3a] sections 5.10 "Interrupt Descriptor
    Table (IDT)", 5.11 "IDT Descriptors", 5.12.1.2 "Flag Usage By
-   Exception- or Interrupt-Handler Procedure". */
+   Exception- or Interrupt-Handler Procedure".    
+*/
 static struct gate idt[INTR_CNT];
 
 static struct desc_ptr idt_desc = {
@@ -110,7 +116,7 @@ static void pic_end_of_interrupt (int irq);
 /* Interrupt handlers. */
 void intr_handler (struct intr_frame *args);
 
-/* Returns the current interrupt status. */
+/* CPU의 인터럽트 상태를 반환하는 함수. Returns the current interrupt status. */
 enum intr_level
 intr_get_level (void) {
 	uint64_t flags;
@@ -203,7 +209,9 @@ intr_init (void) {
 	intr_names[19] = "#XF SIMD Floating-Point Exception";
 }
 
-/* Registers interrupt VEC_NO to invoke HANDLER with descriptor
+/* 
+
+Registers interrupt VEC_NO to invoke HANDLER with descriptor
    privilege level DPL.  Names the interrupt NAME for debugging
    purposes.  The interrupt handler will be invoked with
    interrupt status set to LEVEL. */

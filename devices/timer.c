@@ -29,7 +29,9 @@ static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 
-/* Sets up the 8254 Programmable Interval Timer (PIT) to
+/* 
+초당 PIT_FREQ번의 인터럽트가 발생하도록 설정하는 함수
+Sets up the 8254 Programmable Interval Timer (PIT) to
    interrupt PIT_FREQ times per second, and registers the
    corresponding interrupt. */
 void
@@ -45,12 +47,14 @@ timer_init (void) {
 	intr_register_ext (0x20, timer_interrupt, "8254 Timer");
 }
 
-/* Calibrates loops_per_tick, used to implement brief delays. */
+/* 
+loops_per_tick 값을 조정하여 타이머 루프에서 적절한 지연을 구현할 수 있도록 함
+Calibrates loops_per_tick, used to implement brief delays. */
 void
 timer_calibrate (void) {
 	unsigned high_bit, test_bit;
 
-	ASSERT (intr_get_level () == INTR_ON);
+	ASSERT (intr_get_level () == INTR_ON); // 인터럽트 상태여야 함
 	printf ("Calibrating timer...  ");
 
 	/* Approximate loops_per_tick as the largest power-of-two
@@ -90,11 +94,10 @@ timer_elapsed (int64_t then) {
 /* Suspends execution for approximately TICKS timer ticks. */
 void
 timer_sleep (int64_t ticks) {
-	int64_t start = timer_ticks ();
-
+	int64_t start = timer_ticks (); // records current time
 	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+	while (timer_elapsed (start) < ticks) // return how many ticks have passed since the start
+		thread_yield (); // 계속 Ready 상태로. yeild the cpu and insert thread into ready_list
 }
 
 /* Suspends execution for approximately MS milliseconds. */
