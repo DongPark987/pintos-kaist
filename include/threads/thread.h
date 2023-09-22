@@ -137,7 +137,7 @@ void thread_exit(void) NO_RETURN;
 void thread_yield(void);
 
 /* for thread sleep */
-void thread_sleep(uint16_t ticks);
+void thread_sleep(uint64_t ticks);
 void thread_wake(void);
 
 /* priority */

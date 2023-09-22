@@ -4,4 +4,4 @@ make clean
 make
 cd build
 source ../../activate
-pintos -- run alarm-single
+pintos -- run alarm-multiple
