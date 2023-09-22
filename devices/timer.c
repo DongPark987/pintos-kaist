@@ -86,15 +86,15 @@ int64_t timer_elapsed(int64_t then) { return timer_ticks() - then; }
 void timer_sleep(int64_t ticks) {
   int64_t start = timer_ticks();
   ASSERT(intr_get_level() == INTR_ON);
+  printf("wtf#################\n");
 
-  /* 현재 실행중인 스레드를 블락 */
-  // thread_block();
-  // do_schedule(THREAD_RUNNING);
+  /* thread sleep 방식 */
+  thread_sleep(ticks + timer_ticks());
 
   /* busy wait 방식 */
-  while (timer_elapsed(start) < ticks) {
-    thread_yield(); /* launch thread */
-  }
+  // while (timer_elapsed(start) < ticks) {
+  //   thread_yield(); /* launch thread */
+  // }
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -112,8 +112,10 @@ void timer_print_stats(void) {
 }
 
 /* Timer interrupt handler. */
-static void timer_interrupt(struct intr_frame *args UNUSED) {
+// ! modified
+static void timer_interrupt(struct intr_frame* args UNUSED) {
   ticks++;
+  thread_wake(); /* 깨울 것이 있으면 깨운다 */
   thread_tick();
 }
 

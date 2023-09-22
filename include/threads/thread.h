@@ -95,6 +95,9 @@ struct thread {
   /* Shared between thread.c and synch.c. */
   struct list_elem elem; /* List element. */
 
+  // ! 문제의 구간
+  uint64_t wake_tick; /* Wake Tick */
+
 #ifdef USERPROG
   /* Owned by userprog/process.c. */
   uint64_t *pml4; /* Page map level 4 */
@@ -132,6 +135,10 @@ const char *thread_name(void);
 
 void thread_exit(void) NO_RETURN;
 void thread_yield(void);
+
+/* for thread sleep */
+void thread_sleep(uint16_t ticks);
+void thread_wake(void);
 
 /* priority */
 int thread_get_priority(void);

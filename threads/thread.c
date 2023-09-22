@@ -42,6 +42,9 @@ static struct lock tid_lock;
 /* Thread destruction requests */
 static struct list destruction_req;
 
+/* Thread sleep requests */
+static struct list sleep_queue;
+
 /* Statistics. */
 static long long idle_ticks;   /* g: num of timer ticks spent idle. */
 static long long kernel_ticks; /* g: num of timer ticks in kernel threads. */
@@ -64,6 +67,7 @@ static void init_thread(struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule(void);
 static tid_t allocate_tid(void);
+static bool less_tick(struct thread *, struct thread *, void *);
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -147,8 +151,6 @@ void thread_tick(void) {
   else
     kernel_ticks++;
 
-  /* check sleep queue */
-
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE) intr_yield_on_return();
 }
@@ -206,27 +208,50 @@ tid_t thread_create(const char *name, int priority, thread_func *function,
   return tid;
 }
 
-/* Thread sleep requests */
-static struct list sleep_queue;
-static struct thread_sleep {
-  tid_t tid;
-  uint64_t tick;  // 깨어날 시간
-};
+// ! ============================
+void thread_sleep(uint16_t wake_tick) {
+  printf("sleep thread til ticks\n");
 
-void thread_sleep(uint16_t ticks) {
   /* 현재 스레드를 잠재운다 */
   struct thread *t;
   t = thread_current();
   t->status = THREAD_BLOCKED;
 
   /* sleep queue에 정렬해 삽입 */
-  struct thread_sleep *curr;
+  t->wake_tick = wake_tick;
 
-  curr = list_front(&sleep_queue);
-  while (curr) {
-    if (curr < ticks) curr = &curr->elem;
+  list_insert_ordered(&sleep_queue, t, less_tick, NULL);
+
+  /* 다음 스케줄 시작 */
+  enum intr_level old_level;
+  ASSERT(!intr_context());
+
+  old_level = intr_disable();
+  do_schedule(THREAD_READY);
+  intr_set_level(old_level);
+}
+
+/* 만약 첫번째가 두번째보다 작으면 true */
+static bool less_tick(struct thread *first, struct thread *second, void *aux) {
+  return (first->wake_tick < second->wake_tick);
+}
+
+void thread_wake() {
+  /* check sleep queue */
+  struct thread *curr;
+
+  if (list_empty(&sleep_queue)) return;
+
+  curr = list_entry(list_pop_front(&sleep_queue), struct thread, elem);
+
+  if (curr->wake_tick < timer_ticks()) {  // 만약 실행 시간이 지났으면
+    list_pop_front(&sleep_queue);         // 슬립 큐에서 뽑고
+    curr->status = THREAD_READY;
+    printf("wake thread %d %d\n", curr->tid, curr->status);
+    list_push_back(&ready_list, &curr->elem);  // 다시 대기큐로
   }
 }
+// ! ============================
 
 /* Puts the current thread to sleep.  It will not be scheduled
    again until awoken by thread_unblock().
@@ -301,7 +326,9 @@ void thread_exit(void) {
 }
 
 /* Yields the CPU.  The current thread is not put to sleep and
-   may be scheduled again immediately at the scheduler's whim. */
+   may be scheduled again immediately at the scheduler's whim.
+  1. 리스트 의 뒤로 보냄
+*/
 void thread_yield(void) {
   struct thread *curr = thread_current();
   enum intr_level old_level;
@@ -531,6 +558,9 @@ static void do_schedule(int status) {
   schedule();
 }
 
+/* 현재 스레드를 뒤로보냄
+ *
+ */
 static void schedule(void) {
   struct thread *curr = running_thread();
   struct thread *next = next_thread_to_run();
