@@ -91,7 +91,15 @@ static uint64_t gdt[3] = { 0, 0x00af9a000000ffff, 0x00cf92000000ffff };
    thread_create().
 
    It is not safe to call thread_current() until this function
-   finishes. */
+   finishes. 
+
+   현재 실행 중인 코드를 스레드로 변환하여 스레딩 시스템을 초기화합니다. 이것은 일반적으로 동작하지 않을 수 있으며, 여
+   기에서만 가능한 것은 loader.S가 스택의 하단을 페이지 경계에 두기 위해 주의를 기울였기 때문입니다.
+   또한 실행 대기열과 tid(스레드 식별자) 잠금을 초기화합니다.
+   
+   이 함수를 호출한 후에는 thread_create()를 사용하여 스레드를 생성하기 전에 페이지 할당자를 초기화해야 합니다.
+
+   이 함수가 완료될 때까지 thread_current()를 호출하는 것은 안전하지 않습니다. */
 void
 thread_init (void) {
 	ASSERT (intr_get_level () == INTR_OFF);
@@ -118,7 +126,9 @@ thread_init (void) {
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
-   Also creates the idle thread. */
+   Also creates the idle thread. 
+
+   인터럽트를 활성화함으로써 선점형 스레드 스케줄링을 시작합니다. 또한 아이들 스레드를 생성합니다. */
 void
 thread_start (void) {
 	/* Create the idle thread. */
@@ -134,7 +144,8 @@ thread_start (void) {
 }
 
 /* Called by the timer interrupt handler at each timer tick.
-   Thus, this function runs in an external interrupt context. */
+   Thus, this function runs in an external interrupt context.
+   타이머 인터럽트 핸들러에 의해 각 타이머 틱마다 호출됩니다. 따라서 이 함수는 외부 인터럽트 컨텍스트에서 실행됩니다. */
 void
 thread_tick (void) {
 	struct thread *t = thread_current ();
@@ -154,7 +165,7 @@ thread_tick (void) {
 		intr_yield_on_return ();
 }
 
-/* Prints thread statistics. */
+/* Prints thread statistics. 스레드 통계를 출력합니다. */
 void
 thread_print_stats (void) {
 	printf ("Thread: %lld idle ticks, %lld kernel ticks, %lld user ticks\n",
@@ -175,7 +186,19 @@ thread_print_stats (void) {
 
    The code provided sets the new thread's `priority' member to
    PRIORITY, but no actual priority scheduling is implemented.
-   Priority scheduling is the goal of Problem 1-3. */
+   Priority scheduling is the goal of Problem 1-3.
+
+   주어진 초기 우선순위(PRIORITY)로 이름이 NAME인 새로운 커널 스레드를 생성하고, 
+   FUNCTION을 인자로 AUX를 전달하여 실행하며, 이를 준비 큐(ready queue)에 추가합니다. 
+   새로운 스레드의 식별자(thread identifier)를 반환하며, 생성에 실패한 경우 TID_ERROR를 반환합니다.
+
+   만약 thread_start()가 호출된 경우, 새로운 스레드는 thread_create()가 반환하기 전에 예약될 수 있습니다. 
+   또한 thread_create()가 반환되기 전에 새로운 스레드가 종료될 수도 있습니다. 
+   반대로, 원래의 스레드는 새로운 스레드가 예약되기 전까지 어떤 시간 동안이라도 실행될 수 있습니다. 
+   순서를 보장해야 하는 경우 세마포어 또는 기타 형태의 동기화를 사용하십시오.
+
+   제공된 코드는 새로운 스레드의 `priority` 멤버를 PRIORITY로 설정하지만, 실제 우선순위 스케줄링은 구현되어 있지 않습니다. 
+   우선순위 스케줄링은 Problem 1-3의 목표입니다. */
 tid_t
 thread_create (const char *name, int priority,
 		thread_func *function, void *aux) {
@@ -215,7 +238,11 @@ thread_create (const char *name, int priority,
 
    This function must be called with interrupts turned off.  It
    is usually a better idea to use one of the synchronization
-   primitives in synch.h. */
+   primitives in synch.h.
+   현재 스레드를 슬립 모드로 전환합니다. 스레드는 thread_unblock()에 의해 깨어날 때까지 다시 스케줄되지 않습니다.
+
+   이 함수는 인터럽트가 비활성화된 상태에서 호출되어야 합니다. 
+   일반적으로 synch.h에서 제공하는 동기화 원시(primitives) 중 하나를 사용하는 것이 더 나은 아이디어입니다. */
 void
 thread_block (void) {
 	ASSERT (!intr_context ());
@@ -231,7 +258,15 @@ thread_block (void) {
    This function does not preempt the running thread.  This can
    be important: if the caller had disabled interrupts itself,
    it may expect that it can atomically unblock a thread and
-   update other data. */
+   update other data.
+   차단된 스레드 T를 실행 가능한 상태로 전환합니다. 
+   T가 차단되지 않았다면 오류가 발생합니다. 
+   (실행 중인 스레드를 실행 가능하게 하려면 thread_yield()를 사용하세요.)
+
+   이 함수는 실행 중인 스레드를 선점하지 않습니다. 
+   이것은 중요할 수 있습니다: 호출자가 직접 인터럽트를 비활성화한 경우 스레드를 원자적으로 
+   차단 해제하고 다른 데이터를 업데이트할 수 있다고 기대할 수 있기 때문입니다. */
+
 void
 thread_unblock (struct thread *t) {
 	enum intr_level old_level;
@@ -245,7 +280,8 @@ thread_unblock (struct thread *t) {
 	intr_set_level (old_level);
 }
 
-/* Returns the name of the running thread. */
+/* Returns the name of the running thread. 
+   쓰레드 이름 반환*/
 const char *
 thread_name (void) {
 	return thread_current ()->name;
@@ -253,7 +289,11 @@ thread_name (void) {
 
 /* Returns the running thread.
    This is running_thread() plus a couple of sanity checks.
-   See the big comment at the top of thread.h for details. */
+   See the big comment at the top of thread.h for details. 
+
+   실행 중인 스레드를 반환합니다. 
+   이것은 running_thread()와 몇 가지 안전성 확인을 추가한 것입니다. 
+   자세한 내용은 thread.h 맨 위의 큰 주석을 참조하세요.*/
 struct thread *
 thread_current (void) {
 	struct thread *t = running_thread ();
@@ -262,7 +302,12 @@ thread_current (void) {
 	   If either of these assertions fire, then your thread may
 	   have overflowed its stack.  Each thread has less than 4 kB
 	   of stack, so a few big automatic arrays or moderate
-	   recursion can cause stack overflow. */
+	   recursion can cause stack overflow.
+	   
+	   T가 실제로 스레드인지 확인하세요. 
+	   두 개의 어서션 중 하나라도 발생하면 스레드가 스택 오버플로우에 빠졌을 수 있습니다. 
+	   각 스레드는 4KB 미만의 스택을 갖고 있으므로 큰 자동 배열 몇 개나 중간 정도의 
+	   재귀 호출만으로도 스택 오버플로우가 발생할 수 있습니다. */
 	ASSERT (is_thread (t));
 	ASSERT (t->status == THREAD_RUNNING);
 
@@ -293,7 +338,9 @@ thread_exit (void) {
 }
 
 /* Yields the CPU.  The current thread is not put to sleep and
-   may be scheduled again immediately at the scheduler's whim. */
+   may be scheduled again immediately at the scheduler's whim. 
+   CPU를 양보합니다. 현재 스레드는 잠들지 않으며 스케줄러의 재량에 따라 즉시 다시 예약될 수 있습니다.
+   */
 void
 thread_yield (void) {
 	struct thread *curr = thread_current ();
