@@ -10,5 +10,5 @@
 # build
 */build
 
-# personal
-@sojeong/
+# Ignore all object files
+*.o
