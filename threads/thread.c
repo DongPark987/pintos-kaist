@@ -160,8 +160,11 @@ void thread_tick(void)
 		user_ticks++;
 #endif
 	else
+	{
+		
 		kernel_ticks++;
-
+	}
+	// printf("틱틱 : %s ,%d \n", t->name, intr_get_level());
 	/* Enforce preemption. */
 	if (++thread_ticks >= TIME_SLICE)
 		intr_yield_on_return();
@@ -372,6 +375,8 @@ block상태로 전환 밑 sleep_list에 추가 */
 void thread_sleep(int64_t ticks)
 {
 	struct thread *curr = thread_current();
+	// printf("나는 슬립 :%s \n",curr->name);
+
 	enum intr_level old_level;
 	ASSERT(!intr_context());
 	old_level = intr_disable();
@@ -576,7 +581,11 @@ thread_launch(struct thread *th)
 	 * We first restore the whole execution context into the intr_frame
 	 * and then switching to the next thread by calling do_iret.
 	 * Note that, we SHOULD NOT use any stack from here
-	 * until switching is done. */
+	 * until switching is done. 
+	 * 주요 전환 로직입니다.
+	   먼저 실행 컨텍스트 전체를 intr_frame에 복원한 다음 do_iret를 호출하여 다음 스레드로 전환합니다.
+	   주의할 점은 여기서부터는 전환이 완료될 때까지 어떠한 스택도 사용해서는 안 된다는 것입니다.*/
+
 	__asm __volatile(
 		/* Store registers that will be used. */
 		"push %%rax\n"
@@ -671,7 +680,11 @@ schedule(void)
 		   We just queuing the page free reqeust here because the page is
 		   currently used by the stack.
 		   The real destruction logic will be called at the beginning of the
-		   schedule(). */
+		   schedule(). 
+		   만약 우리가 전환한 스레드가 종료 중이라면, 해당 스레드의 구조체(thread struct)를 파괴합니다. 
+		   이 작업은 thread_exit() 함수가 자신을 지원하지 않도록하기 위해 늦게 발생해야 합니다.
+		   여기서는 페이지가 현재 스택에 의해 사용 중이기 때문에 페이지 해제 요청을 대기열에 추가하기만 합니다. 
+		   실제 파괴 로직은 schedule() 함수의 시작에서 호출될 것입니다. */
 		if (curr && curr->status == THREAD_DYING && curr != initial_thread)
 		{
 			ASSERT(curr != next);

@@ -149,4 +149,16 @@ sleeper (void *t_)
       *test->output_pos++ = t->id;
       lock_release (&test->output_lock);
     }
+  // int a = 1;
+  // int b = 2;
+  // int c;
+  //     for (i = 1; i <= 20000000; i++) 
+  //   {
+  //     int c = a+b;
+  //     // int64_t sleep_until = test->start + i * t->duration;
+  //     // timer_sleep (sleep_until - timer_ticks ());
+  //     // lock_acquire (&test->output_lock);
+  //     // *test->output_pos++ = t->id;
+  //     // lock_release (&test->output_lock);
+  //   }
 }

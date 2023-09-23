@@ -1,6 +1,9 @@
 /* This file is derived from source code for the Nachos
    instructional operating system.  The Nachos copyright notice
-   is reproduced in full below. */
+   is reproduced in full below.
+
+   이 파일은 Nachos 교육용 운영 체제의 소스 코드에서 파생되었습니다. 
+   Nachos 저작권 고지가 아래에 전문으로 재생산되었습니다. */
 
 /* Copyright (c) 1992-1996 The Regents of the University of California.
    All rights reserved.
@@ -24,6 +27,19 @@
    BASIS, AND THE UNIVERSITY OF CALIFORNIA HAS NO OBLIGATION TO
    PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR
    MODIFICATIONS.
+
+   저작권 (c) 1992-1996 캘리포니아 대학령의 모든 권리 보유.
+
+   이 소프트웨어와 그 문서를 별도의 비용 없이 사용, 복사, 수정 및 배포하는 허가가 여기에 부여됩니다. 
+   서면 합의 없이, 다음의 저작권 고지와 다음 두 단락이 이 소프트웨어의 모든 사본에 나타나야 합니다.
+
+   캘리포니아 대학령은 이 소프트웨어와 그 문서의 사용으로 인해 발생하는 직접, 간접, 특별, 우발적 또는 
+   결과적 손해에 대해 어떤 당사자에게도 책임을 지지 않습니다. 심지어 캘리포니아 대학령이 그러한 손해 
+   가능성을 미리 경고했더라도.
+
+   캘리포니아 대학령은 명시적 또는 특정 목적에 대한 상업성 및 적합성을 포함하되 이에 한정되지 않는 
+   어떠한 보증도 명시적으로 부인합니다. 여기에서 제공하는 소프트웨어는 "있는 그대로" 제공되며, 
+   캘리포니아 대학령은 유지 보수, 지원, 업데이트, 개선 또는 수정을 제공할 의무가 없습니다.
    */
 
 #include "threads/synch.h"
@@ -40,12 +56,23 @@
    decrement it.
 
    - up or "V": increment the value (and wake up one waiting
-   thread, if any). */
+   thread, if any).
+
+   세마포어(SEMA)를 VALUE로 초기화합니다. 세마포어는 음수가 아닌 정수와
+   이를 조작하는 데 사용되는 두 가지 원자 연산을 가지고 있습니다:
+
+   - down 또는 "P": 값이 양수가 될 때까지 기다린 다음 값을 감소시킵니다.
+
+   - up 또는 "V": 값을 증가시킵니다 (그리고 대기 중인 스레드 중 하나를 깨우며,
+   대기 중인 스레드가 있는 경우).
+    */
 void
 sema_init (struct semaphore *sema, unsigned value) {
+	/*sema 인자가 NULL값이면 ASSERT 발생*/
 	ASSERT (sema != NULL);
-
+	/*세마포어 value 인자로 받은 value 값을 대입*/
 	sema->value = value;
+	/*list.h에 구현되어 있는 연결 리스트 사용*/
 	list_init (&sema->waiters);
 }
 
@@ -56,7 +83,15 @@ sema_init (struct semaphore *sema, unsigned value) {
    interrupt handler.  This function may be called with
    interrupts disabled, but if it sleeps then the next scheduled
    thread will probably turn interrupts back on. This is
-   sema_down function. */
+   sema_down function.
+   
+   세마포어(SEMA)에 대한 다운 또는 "P" 연산입니다. 
+   SEMA의 값이 양수가 될 때까지 기다린 다음 원자적으로 값을 감소시킵니다.
+
+   이 함수는 슬립할 수 있으므로 인터럽트 처리기 내에서 호출해서는 안 됩니다. 
+   이 함수는 인터럽트가 비활성화된 상태에서 호출될 수 있지만, 
+   만약 이 함수가 슬립하면 다음 예정된 스레드가 아마도 인터럽트를 다시 활성화할 것입니다. 
+   이것이 "sema_down" 함수입니다. */
 void
 sema_down (struct semaphore *sema) {
 	enum intr_level old_level;
@@ -77,7 +112,11 @@ sema_down (struct semaphore *sema) {
    semaphore is not already 0.  Returns true if the semaphore is
    decremented, false otherwise.
 
-   This function may be called from an interrupt handler. */
+   This function may be called from an interrupt handler. 
+   세마포어에 대한 "다운" 또는 "P" 연산을 수행합니다. 
+   다만, 세마포어가 이미 0인 경우에만 수행합니다. 세마포어가 감소되면
+   true를 반환하고, 그렇지 않으면 false를 반환합니다.
+   이 함수는 인터럽트 핸들러에서 호출될 수 있습니다. */
 bool
 sema_try_down (struct semaphore *sema) {
 	enum intr_level old_level;
