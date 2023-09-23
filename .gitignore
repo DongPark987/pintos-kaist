@@ -10,5 +10,6 @@
 # build
 */build
 
-# personal
-@sojeong/
+.vscode/
+
+*.o
