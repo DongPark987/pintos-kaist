@@ -161,7 +161,7 @@ void thread_tick(void)
 #endif
 	else
 	{
-		
+
 		kernel_ticks++;
 	}
 	// printf("틱틱 : %s ,%d \n", t->name, intr_get_level());
@@ -233,8 +233,9 @@ tid_t thread_create(const char *name, int priority,
 	t->tf.eflags = FLAG_IF;
 
 	/* Add to run queue. */
-	thread_unblock(t);
 
+	thread_unblock(t);
+	thread_yield();
 	return tid;
 }
 
@@ -280,7 +281,7 @@ void thread_unblock(struct thread *t)
 
 	old_level = intr_disable();
 	ASSERT(t->status == THREAD_BLOCKED);
-	list_push_back(&ready_list, &t->elem);
+	list_insert_ordered(&ready_list, &t->elem, cmp_priority, NULL);
 	t->status = THREAD_READY;
 	intr_set_level(old_level);
 }
@@ -357,7 +358,8 @@ void thread_yield(void)
 
 	old_level = intr_disable();
 	if (curr != idle_thread)
-		list_push_back(&ready_list, &curr->elem);
+		list_insert_ordered(&ready_list, &curr->elem, cmp_priority, NULL);
+
 	do_schedule(THREAD_READY);
 	intr_set_level(old_level);
 }
@@ -370,16 +372,22 @@ bool cmp_wake_tick(const struct list_elem *a_, const struct list_elem *b_, void 
 	return (a->wake_tick < b->wake_tick);
 }
 
+bool cmp_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
+{
+	const struct thread *a = list_entry(a_, struct thread, elem);
+	const struct thread *b = list_entry(b_, struct thread, elem);
+	return (a->priority > b->priority);
+}
+
 /*현재 쓰레드가 THREAD_READY 되어야 할 wakeTick을 설정하고
 block상태로 전환 밑 sleep_list에 추가 */
 void thread_sleep(int64_t ticks)
 {
 	struct thread *curr = thread_current();
-	// printf("나는 슬립 :%s \n",curr->name);
-
 	enum intr_level old_level;
 	ASSERT(!intr_context());
 	old_level = intr_disable();
+
 	if (curr != idle_thread)
 	{
 		curr->wake_tick = ticks;
@@ -416,6 +424,12 @@ void thread_wake(int64_t ticks)
 void thread_set_priority(int new_priority)
 {
 	thread_current()->priority = new_priority;
+	/*더 높은 priority를 가진 thread가 들어오면 자원을 양도하기 위해
+	  일단 yield를 수행하고 readylist에서 가장 우선순위가 높은 thread부터
+	  실행한다. 자신이 우선순위가 가장 높은 경우 yield가 호출되어도 문맥 교환이
+	  일어나지 않는다. */
+	thread_yield();
+
 }
 
 /* Returns the current thread's priority. */
@@ -483,6 +497,14 @@ idle(void *idle_started_ UNUSED)
 		   between re-enabling interrupts and waiting for the next
 		   one to occur, wasting as much as one clock tick worth of
 		   time.
+
+		   "인터럽트를 다시 활성화하고 다음 인터럽트를 기다립니다.
+
+		   'sti' 명령은 다음 명령의 완료까지 인터럽트를 비활성화하므로
+		   이 두 개의 명령은 원자적으로 실행됩니다. 이 원자성은 중요합니다.
+		   그렇지 않으면 인터럽트가 인터럽트를 다시 활성화하고 다음 인터럽트가
+		   발생하기를 기다리는 사이에 처리될 수 있으며, 이로 인해 1클럭 틱만큼의
+		   시간이 낭비될 수 있습니다."
 
 		   See [IA32-v2a] "HLT", [IA32-v2b] "STI", and [IA32-v3a]
 		   7.11.1 "HLT Instruction". */
@@ -581,7 +603,7 @@ thread_launch(struct thread *th)
 	 * We first restore the whole execution context into the intr_frame
 	 * and then switching to the next thread by calling do_iret.
 	 * Note that, we SHOULD NOT use any stack from here
-	 * until switching is done. 
+	 * until switching is done.
 	 * 주요 전환 로직입니다.
 	   먼저 실행 컨텍스트 전체를 intr_frame에 복원한 다음 do_iret를 호출하여 다음 스레드로 전환합니다.
 	   주의할 점은 여기서부터는 전환이 완료될 때까지 어떠한 스택도 사용해서는 안 된다는 것입니다.*/
@@ -680,10 +702,10 @@ schedule(void)
 		   We just queuing the page free reqeust here because the page is
 		   currently used by the stack.
 		   The real destruction logic will be called at the beginning of the
-		   schedule(). 
-		   만약 우리가 전환한 스레드가 종료 중이라면, 해당 스레드의 구조체(thread struct)를 파괴합니다. 
+		   schedule().
+		   만약 우리가 전환한 스레드가 종료 중이라면, 해당 스레드의 구조체(thread struct)를 파괴합니다.
 		   이 작업은 thread_exit() 함수가 자신을 지원하지 않도록하기 위해 늦게 발생해야 합니다.
-		   여기서는 페이지가 현재 스택에 의해 사용 중이기 때문에 페이지 해제 요청을 대기열에 추가하기만 합니다. 
+		   여기서는 페이지가 현재 스택에 의해 사용 중이기 때문에 페이지 해제 요청을 대기열에 추가하기만 합니다.
 		   실제 파괴 로직은 schedule() 함수의 시작에서 호출될 것입니다. */
 		if (curr && curr->status == THREAD_DYING && curr != initial_thread)
 		{
