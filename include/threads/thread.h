@@ -151,4 +151,9 @@ bool cmp_wake_tick(const struct list_elem *a, const struct list_elem *b, void *a
 void thread_sleep(int64_t ticks);
 void thread_wake(int64_t ticks);
 
+/*
+	priority
+*/
+bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+
 #endif /* threads/thread.h */
