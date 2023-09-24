@@ -3,4 +3,4 @@ make clean
 make
 cd build
 source ../../activate
-pintos -- -q run alarm-negative
+pintos -- -q run priority-donate-multiple
