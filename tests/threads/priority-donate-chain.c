@@ -56,7 +56,7 @@ test_priority_donate_chain (void)
   for (i = 0; i < NESTING_DEPTH - 1; i++)
     lock_init (&locks[i]);
 
-  lock_acquire (&locks[0]);
+  lock_acquire (&locks[0]); // main은 lock[0]의 락을 획득
   msg ("%s got lock.", thread_name ());
 
   for (i = 1; i < NESTING_DEPTH; i++)
@@ -66,7 +66,7 @@ test_priority_donate_chain (void)
 
       snprintf (name, sizeof name, "thread %d", i);
       thread_priority = PRI_MIN + i * 3;
-      lock_pairs[i].first = i < NESTING_DEPTH - 1 ? locks + i: NULL;
+      lock_pairs[i].first = i < NESTING_DEPTH - 1 ? locks + i: NULL; // 
       lock_pairs[i].second = locks + i - 1;
 
       thread_create (name, thread_priority, donor_thread_func, lock_pairs + i);

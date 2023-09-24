@@ -76,6 +76,11 @@ static tid_t allocate_tid(void);
  * somewhere in the middle, this locates the curent thread. */
 #define running_thread() ((struct thread *)(pg_round_down(rrsp())))
 
+/*
+Global Descriptor Table
+- 메모리 세그먼트를 정의하고 관리하는 데 사용
+- 운영체제와 하드웨어 간에 메모리 접근 권한 및 보호를 설정하는 데에 중요한 역할을 함
+*/
 // Global descriptor table for the thread_start.
 // Because the gdt will be setup after the thread_init, we should
 // setup temporal gdt first.
@@ -152,15 +157,15 @@ void thread_tick(void)
 {
 	struct thread *t = thread_current();
 
-  /* Update statistics. */
-  if (t == idle_thread)
-    idle_ticks++;
+	/* Update statistics. */
+	if (t == idle_thread)
+		idle_ticks++;
 #ifdef USERPROG
-  else if (t->pml4 != NULL)
-    user_ticks++;
+	else if (t->pml4 != NULL)
+		user_ticks++;
 #endif
-  else
-    kernel_ticks++;
+	else
+		kernel_ticks++;
 
 	/* Enforce preemption. */
 	if (++thread_ticks >= TIME_SLICE)
@@ -232,7 +237,12 @@ tid_t thread_create(const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock(t);
 
-  return tid;
+	if (priority > thread_current()->priority)
+	{
+		thread_yield();
+	}
+
+	return tid;
 }
 
 /* Puts the current thread to sleep.  It will not be scheduled
@@ -277,9 +287,22 @@ void thread_unblock(struct thread *t)
 
 	old_level = intr_disable();
 	ASSERT(t->status == THREAD_BLOCKED);
-	list_push_back(&ready_list, &t->elem);
+	// TODO: Priority Scheduling
+	// TODO: 현재 진행되고 있는 스레드보다 우선순위가 높은 스레드가 추가되면, 현재 스레드는 바로 이 스레드에 양보해야 함
+	// list_push_back(&ready_list, &t->elem);
+	list_insert_ordered(&ready_list, &t->elem, cmp_priority, NULL);
 	t->status = THREAD_READY;
+	// if (t->priority > thread_current()->priority)
+	// 	thread_yield();
 	intr_set_level(old_level);
+}
+
+/*삽입 정렬 시 wake_tick 비교 함수*/
+bool cmp_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
+{
+	const struct thread *a = list_entry(a_, struct thread, elem);
+	const struct thread *b = list_entry(b_, struct thread, elem);
+	return (a->priority > b->priority);
 }
 
 /* Returns the name of the running thread.
@@ -315,7 +338,7 @@ thread_current(void)
 	ASSERT(is_thread(t));
 	ASSERT(t->status == THREAD_RUNNING);
 
-  return t;
+	return t;
 }
 
 /* Returns the running thread's tid. */
@@ -354,7 +377,8 @@ void thread_yield(void)
 
 	old_level = intr_disable();
 	if (curr != idle_thread)
-		list_push_back(&ready_list, &curr->elem);
+		// list_push_back(&ready_list, &curr->elem);
+		list_insert_ordered(&ready_list, &curr->elem, cmp_priority, NULL);
 	do_schedule(THREAD_READY);
 	intr_set_level(old_level);
 }
@@ -410,12 +434,19 @@ void thread_wake(int64_t ticks)
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void thread_set_priority(int new_priority)
 {
+	int curr_priority = thread_current()->priority;
 	thread_current()->priority = new_priority;
+	// TODO: If the current thread no longer has the highest priority, yields.
+	if (curr_priority > new_priority)
+	{
+		thread_yield();
+	}
 }
 
 /* Returns the current thread's priority. */
 int thread_get_priority(void)
 {
+	// TODO: In the presence of priority donation, returns the higher (donated) priority.
 	return thread_current()->priority;
 }
 
@@ -469,18 +500,18 @@ idle(void *idle_started_ UNUSED)
 		intr_disable();
 		thread_block();
 
-    /* Re-enable interrupts and wait for the next one.
+		/* Re-enable interrupts and wait for the next one.
 
-       The `sti' instruction disables interrupts until the
-       completion of the next instruction, so these two
-       instructions are executed atomically.  This atomicity is
-       important; otherwise, an interrupt could be handled
-       between re-enabling interrupts and waiting for the next
-       one to occur, wasting as much as one clock tick worth of
-       time.
+		   The `sti' instruction disables interrupts until the
+		   completion of the next instruction, so these two
+		   instructions are executed atomically.  This atomicity is
+		   important; otherwise, an interrupt could be handled
+		   between re-enabling interrupts and waiting for the next
+		   one to occur, wasting as much as one clock tick worth of
+		   time.
 
-		   See [IA32-v2a] "HLT", [IA32-v2b] "STI", and [IA32-v3a]
-		   7.11.1 "HLT Instruction". */
+			   See [IA32-v2a] "HLT", [IA32-v2b] "STI", and [IA32-v3a]
+			   7.11.1 "HLT Instruction". */
 		asm volatile("sti; hlt" : : : "memory");
 	}
 }
@@ -655,8 +686,8 @@ schedule(void)
 	/* Mark us as running. */
 	next->status = THREAD_RUNNING;
 
-  /* Start new time slice. */
-  thread_ticks = 0;
+	/* Start new time slice. */
+	thread_ticks = 0;
 
 #ifdef USERPROG
 	/* Activate the new address space. */
@@ -695,5 +726,5 @@ allocate_tid(void)
 	tid = next_tid++;
 	lock_release(&tid_lock);
 
-  return tid;
+	return tid;
 }
