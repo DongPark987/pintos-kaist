@@ -42,7 +42,7 @@ intr_entry:
 	movw %ax, %fs
 	movw %ax, %gs
 	movq %rsp,%rdi
-	call intr_handler
+	call intr_handler /* interrupt handler call */
 	movq 0(%rsp), %r15
 	movq 8(%rsp), %r14
 	movq 16(%rsp), %r13

@@ -36,13 +36,15 @@ static void real_time_sleep(int64_t num, int32_t denom);
    corresponding interrupt. */
 void timer_init(void) {
   /* 8254 input frequency divided by TIMER_FREQ, rounded to
-     nearest. */
+     nearest. 타이머를 TIMER_FREQ마다 인터럽트 발생시키도록 설정 */
   uint16_t count = (1193180 + TIMER_FREQ / 2) / TIMER_FREQ;
 
   outb(0x43, 0x34); /* CW: counter 0, LSB then MSB, mode 2, binary. */
   outb(0x40, count & 0xff);
   outb(0x40, count >> 8);
 
+  /* 0x20 은 타임 인터럽트의 벡터값. 이 벡터값과 핸들러(=interrupt service
+    routine, ISP)를 매핑해둔다 */
   intr_register_ext(0x20, timer_interrupt, "8254 Timer");
 }
 
@@ -84,16 +86,18 @@ int64_t timer_elapsed(int64_t then) { return timer_ticks() - then; }
 
 /* Suspends execution for approximately TICKS timer ticks. */
 void timer_sleep(int64_t ticks) {
+  if (ticks < 0) return; /* alarm-negative */
+
   int64_t start = timer_ticks();
   ASSERT(intr_get_level() == INTR_ON);
 
   /* thread sleep 방식 */
   thread_sleep(ticks + timer_ticks());
 
-  /* busy wait 방식 */
-  // while (timer_elapsed(start) < ticks) {
-  //   thread_yield(); /* launch thread */
-  // }
+  /* busy wait 방식
+    while (timer_elapsed(start) < ticks) {
+      thread_yield();
+    } */
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -111,11 +115,10 @@ void timer_print_stats(void) {
 }
 
 /* Timer interrupt handler. */
-// ! modified
 static void timer_interrupt(struct intr_frame* args UNUSED) {
   ticks++;
-  thread_wake(); /* 깨울 것이 있으면 깨운다 */
-  thread_tick();
+  thread_tick();              /* 1 tick마다 실행된다 */
+  thread_wake(timer_ticks()); /* 깨울 것이 있으면 깨운다 */
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

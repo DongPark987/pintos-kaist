@@ -81,7 +81,9 @@ static void test_sleep(int thread_cnt, int iterations) {
     thread_create(name, PRI_DEFAULT, sleeper, t);
   }
 
-  /* Wait long enough for all the threads to finish. */
+  /* Wait long enough for all the threads to finish.
+   * 메인이 안 끝나게 함.. 이게 메인
+   */
   timer_sleep(100 + thread_cnt * iterations * 10 + 100);
 
   /* Acquire the output lock in case some rogue thread is still
@@ -124,7 +126,14 @@ static void test_sleep(int thread_cnt, int iterations) {
 static void sleeper(void *t_) {
   struct sleep_thread *t = t_;
   struct sleep_test *test = t->test;
-  int i;
+
+  long long i;
+  int a = 5;
+  int b = 10;
+
+  for (i = 1; i < 200000; i++) {
+    int c = a + b;
+  }
 
   for (i = 1; i <= test->iterations; i++) {
     int64_t sleep_until = test->start + i * t->duration;

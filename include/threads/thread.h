@@ -50,7 +50,7 @@ typedef int tid_t;
  *           |                                 |
  *           |                                 |
  *           |                                 |
- *           +---------------------------------+
+ *      1 kB +---------------------------------+
  *           |              magic              |
  *           |            intr_frame           |
  *           |                :                |
@@ -79,6 +79,7 @@ typedef int tid_t;
  * the `magic' member of the running thread's `struct thread' is
  * set to THREAD_MAGIC.  Stack overflow will normally change this
  * value, triggering the assertion. */
+
 /* The `elem' member has a dual purpose.  It can be an element in
  * the run queue (thread.c), or it can be an element in a
  * semaphore wait list (synch.c).  It can be used these two ways
@@ -90,12 +91,14 @@ struct thread {
   tid_t tid;                 /* Thread identifier. */
   enum thread_status status; /* Thread state. */
   char name[16];             /* Name (for debugging purposes). */
-  int priority;              /* Priority. */
+
+  int priority;             /* 나의 priority */
+  uint32_t donate_list[64]; /* 기증받은 priority */
+  struct thread *holder;    /* 내가 donate했던 애 */
 
   /* Shared between thread.c and synch.c. */
   struct list_elem elem; /* List element. */
 
-  // ! 문제의 구간
   uint64_t wake_tick; /* Wake Tick */
 
 #ifdef USERPROG
@@ -138,17 +141,22 @@ void thread_yield(void);
 
 /* for thread sleep */
 void thread_sleep(uint64_t ticks);
-void thread_wake(void);
+void thread_wake(uint64_t ticks);
 
 /* priority */
 int thread_get_priority(void);
 void thread_set_priority(int);
+int thread_max_priority(struct thread *);
 
 /* mlfq */
 int thread_get_nice(void);
 void thread_set_nice(int);
 int thread_get_recent_cpu(void);
 int thread_get_load_avg(void);
+
+/* list cmp funtcions */
+bool less_tick(struct list_elem *, struct list_elem *, void *);
+bool high_prio(struct list_elem *, struct list_elem *, void *);
 
 void do_iret(struct intr_frame *tf);
 

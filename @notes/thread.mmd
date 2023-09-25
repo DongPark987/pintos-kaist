@@ -1,0 +1,8 @@
+sequenceDiagram
+participant Processor
+participant PIC
+participant 8254_Timer
+
+8254_Timer ->> PIC: 0x20
+PIC ->> Processor: 0x20(time_interrupt)
+Note right of Processor: interrupt! 
