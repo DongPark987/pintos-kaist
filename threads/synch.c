@@ -138,6 +138,13 @@ bool sema_try_down(struct semaphore *sema)
    return success;
 }
 
+bool cmp_priority_max(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
+{
+   const struct thread *a = list_entry(a_, struct thread, elem);
+   const struct thread *b = list_entry(b_, struct thread, elem);
+   return (a->priority < b->priority);
+}
+
 /* Up or "V" operation on a semaphore.  Increments SEMA's value
    and wakes up one thread of those waiting for SEMA, if any.
 
@@ -148,14 +155,28 @@ bool sema_try_down(struct semaphore *sema)
 void sema_up(struct semaphore *sema)
 {
    enum intr_level old_level;
+   struct thread *tmp_t;
+   struct thread *curr = thread_current();
+   struct list_elem *tmp_elem;
 
    ASSERT(sema != NULL);
 
    old_level = intr_disable();
    if (!list_empty(&sema->waiters))
-      thread_unblock(list_entry(list_pop_front(&sema->waiters),
-                                struct thread, elem));
+   {
+      // tmp_t = list_entry(list_pop_front(&sema->waiters), struct thread, elem);
+      tmp_elem = list_max((&sema->waiters), cmp_priority_max, NULL);
+      tmp_t = list_entry(tmp_elem, struct thread, elem);
+      if (curr->donation_list[tmp_t->priority] != 0)
+      {
+         curr->donation_cnt--;
+         curr->donation_list[tmp_t->priority]--;
+      }
+      list_remove(tmp_elem);
+      thread_unblock(tmp_t);
+   }
    sema->value++;
+   thread_yield();
    intr_set_level(old_level);
 }
 
@@ -226,8 +247,9 @@ sema_test_helper(void *sema_)
 void lock_init(struct lock *lock)
 {
    ASSERT(lock != NULL);
-
    lock->holder = NULL;
+   for (int i = 0; i < 64; i++)
+      lock->donation_list[i] = 0;
    sema_init(&lock->semaphore, 1);
 }
 
@@ -250,14 +272,46 @@ void lock_acquire(struct lock *lock)
    ASSERT(lock != NULL);
    ASSERT(!intr_context());
    ASSERT(!lock_held_by_current_thread(lock));
+   struct thread* curr_t = thread_current();
+   
 
    if (lock->holder != NULL)
-      if (lock->old_priority < thread_get_priority())
-         lock->holder->priority = thread_get_priority();
-   
-   sema_down (&lock->semaphore);
+   {
+      curr_t->holder_lock = lock;
+      curr_t->holder = lock->holder;
+      
+      int curr_priority = thread_get_priority();
+      if (lock->old_priority < curr_priority)
+      {
+         lock->holder->donation_cnt++;
+         lock->holder->donation_list[curr_priority]++;
+         lock->donation_list[curr_priority]++;
+         if (lock->holder->priority < curr_priority)
+         {
+            lock->holder->priority = curr_priority;
+         }
+         struct lock* next_lock = lock->holder->holder_lock;
+         while (next_lock!=NULL)
+         {
+            if(next_lock->holder->priority < curr_priority){
+               next_lock->holder->donation_cnt++;
+               next_lock->holder->donation_list[curr_priority]++;
+               next_lock->donation_list[curr_priority]++;
+               if(next_lock->holder->priority < curr_priority){
+                  next_lock->holder->priority = curr_priority;
+               }
+            }
+            next_lock = next_lock->holder->holder_lock;
+         }
+         
+      }
+   }
 
-   lock->holder = thread_current();
+   sema_down(&lock->semaphore);
+
+   lock->holder = curr_t;
+   curr_t->holder = NULL;
+   curr_t->holder_lock = NULL;
    lock->old_priority = thread_get_priority();
 }
 
@@ -301,9 +355,28 @@ void lock_release(struct lock *lock)
 {
    ASSERT(lock != NULL);
    ASSERT(lock_held_by_current_thread(lock));
+   struct thread *t = thread_current();
+   for (int i = 0; i < 63; i++)
+   {
+      t->donation_list[i] -= lock->donation_list[i];
+      t->donation_cnt -= lock->donation_list[i];
+      lock->donation_list[i] = 0;
+   }
    lock->holder = NULL;
    sema_up(&lock->semaphore);
-   thread_set_priority(lock->old_priority);
+
+   if (t->donation_cnt == 0)
+   {
+      thread_set_priority(lock->old_priority);
+   }
+   else
+   {
+      int i = 63;
+      for (; i >= 0; i--)
+         if (t->donation_list[i] != 0)
+            break;
+      thread_set_priority(i);
+   }
 }
 
 /* Returns true if the current thread holds LOCK, false

@@ -376,7 +376,7 @@ bool cmp_priority(const struct list_elem *a_, const struct list_elem *b_, void *
 {
 	const struct thread *a = list_entry(a_, struct thread, elem);
 	const struct thread *b = list_entry(b_, struct thread, elem);
-	return (a->priority >= b->priority);
+	return (a->thread_get >= b->priority);
 }
 
 /*현재 쓰레드가 THREAD_READY 되어야 할 wakeTick을 설정하고
@@ -429,13 +429,40 @@ void thread_set_priority(int new_priority)
 	  실행한다. 자신이 우선순위가 가장 높은 경우 yield가 호출되어도 문맥 교환이
 	  일어나지 않는다. */
 	thread_yield();
-
 }
 
 /* Returns the current thread's priority. */
 int thread_get_priority(void)
 {
-	return thread_current()->priority;
+	struct thread *t = thread_current();
+	if (t->donation_cnt == 0)
+	{
+		return t->priority;
+	}
+	else
+	{
+		int i = 63;
+		for (; i >= 0; i--)
+			if (t->donation_list[i] != 0)
+				break;
+		return i;
+	}
+}
+
+int thread_get_priority_manual(struct thread *t)
+{
+	if (t->donation_cnt == 0)
+	{
+		return t->priority;
+	}
+	else
+	{
+		int i = 63;
+		for (; i >= 0; i--)
+			if (t->donation_list[i] != 0)
+				break;
+		return i;
+	}
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -538,6 +565,11 @@ init_thread(struct thread *t, const char *name, int priority)
 	t->tf.rsp = (uint64_t)t + PGSIZE - sizeof(void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+	t->holder = NULL;
+	t->holder_lock = NULL;
+	t->donation_cnt = 0;
+	for (int i = 0; i < 65; i++)
+		t->donation_list[i] = 0;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
