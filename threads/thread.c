@@ -267,8 +267,7 @@ void thread_wake(uint64_t ticks) {
 
     if (curr->wake_tick <= ticks) {  // 만약 실행 시간이 지났으면
       list_pop_front(&sleep_queue);  // 슬립 큐에서 뽑고
-      curr->status = THREAD_READY;
-      list_insert_ordered(&ready_list, &curr->elem, high_prio, NULL);
+      thread_unblock(curr);
     } else {
       break;
     }
