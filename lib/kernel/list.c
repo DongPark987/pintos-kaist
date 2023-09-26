@@ -518,3 +518,21 @@ list_min(struct list *list, list_less_func *less, void *aux)
 	}
 	return min;
 }
+
+struct list_elem *
+list_find(struct list *list, struct list_elem *target, void *aux)
+{
+	struct list_elem *e;
+	struct list_elem *found = (struct list_elem *)NULL;
+
+	ASSERT(list != NULL);
+
+	for (e = list_begin(list); e != list_end(list); e = list_next(e))
+		if (e == target)
+		{
+			found = e;
+			break;
+		}
+
+	return found;
+};

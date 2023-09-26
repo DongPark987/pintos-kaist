@@ -166,7 +166,6 @@ void thread_tick(void)
 #endif
 	else
 	{
-
 		kernel_ticks++;
 	}
 	/* Enforce preemption. */
@@ -383,6 +382,7 @@ bool cmp_priority(const struct list_elem *a_, const struct list_elem *b_, void *
 	return (a->priority > b->priority);
 }
 
+
 /*현재 쓰레드가 THREAD_READY 되어야 할 wakeTick을 설정하고
 block상태로 전환 밑 sleep_list에 추가 */
 void thread_sleep(int64_t ticks)
@@ -541,7 +541,10 @@ init_thread(struct thread *t, const char *name, int priority)
 	strlcpy(t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t)t + PGSIZE - sizeof(void *);
 	t->priority = priority;
+	t->origin_priority = priority;
+	t->wait_on_lock = NULL;
 	t->magic = THREAD_MAGIC;
+	list_init(&t->donators);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
