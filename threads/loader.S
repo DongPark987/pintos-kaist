@@ -72,27 +72,28 @@ start:
 
 # Set up data segments.
 
-	subw %ax, %ax
-	movw %ax, %es
-	movw %ax, %ds
+	subw %ax, %ax # %ax를 0으로 초기화
+	movw %ax, %es # %es(extra segment) 0으로 초기화
+	movw %ax, %ds # %ds(data segment) 0으로 초기화
 
 # Set up stack segment.
 # Stack grows downward starting from us.
 # We don't ever use the stack, but we call into the BIOS,
 # which might.
 
-	movw %ax, %ss
-	movw $0x7c00, %sp
+	movw %ax, %ss     # %ss(stack segment, stack base ptr) 0으로 초기화
+	movw $0x7c00, %sp # %sp(stack pointer) 0x7c00으로 초기화(이 코드 적재 시작부분)
 	
 #### Enable A20.  Address line 20 is tied to low when the machine
 #### boots, which prevents addressing memory about 1 MB.  This code
 #### fixes it.
-	
+#### 1MB 이상의 메모리를 주소지정하기 위해 A20 라인을 활성화한다. (무슨말?)
+
 # Poll status register while busy.
 
-1:	inb $0x64, %al
-	testb $0x2, %al
-	jnz 1b
+1:	inb $0x64, %al   # 0x64 포트에서 값을 읽어와서 %al 레지스터에 저장
+	testb $0x2, %al  # 0x2 & %al 을 수행하고,
+	jnz 1b           # 0이 아니면 1b로 jump한다 (0일때까지 1과정을 반복하는듯)
 
 # Send command for writing output port.
 
@@ -149,6 +150,7 @@ e820_parse_done:
 # Point the GDTR to our GDT.  Protected mode requires a GDT.
 # We need a data32 prefix to ensure that all 32 bits of the GDT
 # descriptor are loaded (default is to load only 24 bits).
+# GDT의 주소를 GDTR (Global Descriptor Table Register)에 저장
 
 	data32 lgdt gdtdesc
 
@@ -159,6 +161,7 @@ e820_parse_done:
 #       write-protect bits in page tables (!).
 #    EM (Emulation): forces floating-point instructions to trap.
 #       We don't support floating point. 
+#    프로텍트 모드의 기능을 켠다
 	
 	movl %cr0, %eax
 	orl $CR0_PE, %eax

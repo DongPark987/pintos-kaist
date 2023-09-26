@@ -1,5 +1,7 @@
 {
     "files.associations": {
-        "synch.h": "c"
+        "synch.h": "c",
+        "random": "c",
+        "limits": "c"
     }
 }

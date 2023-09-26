@@ -92,9 +92,9 @@ struct thread {
   enum thread_status status; /* Thread state. */
   char name[16];             /* Name (for debugging purposes). */
 
-  int priority;             /* 나의 priority */
-  uint32_t donate_list[64]; /* 기증받은 priority */
-  struct thread *holder;    /* 내가 donate했던 애 */
+  int priority;            /* 나의 priority */
+  uint8_t donate_list[64]; /* 기증받은 priority */
+  struct thread *holder;   /* 내가 donate했던 애 */
 
   /* Shared between thread.c and synch.c. */
   struct list_elem elem; /* List element. */

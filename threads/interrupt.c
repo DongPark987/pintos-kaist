@@ -213,6 +213,7 @@ void intr_init(void) {
      찾아 인터럽트 핸들러를 실행한다. 이 테이블은 일반적으로 모든 시스템에서
      단일하다. */
   for (i = 0; i < INTR_CNT; i++) {
+    /* &idt[i]에 intr_stubs[i] */
     make_intr_gate(&idt[i], intr_stubs[i], 0);
     intr_names[i] = "unknown";
   }
@@ -327,7 +328,7 @@ bool intr_context(void) { return in_external_intr; }
    수 없다. */
 void intr_yield_on_return(void) {
   ASSERT(intr_context());
-  yield_on_return = true;  // ! yield flag를 세움. 누가 읽을까?
+  yield_on_return = true;
 }
 
 /* 8259A Programmable Interrupt Controller. */

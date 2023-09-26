@@ -118,7 +118,7 @@ intr##NUMBER##_stub:                            \
 .section .data; \
 .quad intr##NUMBER##_stub;
 
-/* All the stubs. */
+/* All the stubs. 256개 인터럽트 */
 STUB(00, zero) STUB(01, zero) STUB(02, zero) STUB(03, zero)
 STUB(04, zero) STUB(05, zero) STUB(06, zero) STUB(07, zero)
 STUB(08, REAL) STUB(09, zero) STUB(0a, REAL) STUB(0b, REAL)
