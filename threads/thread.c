@@ -223,9 +223,11 @@ tid_t thread_create(const char *name, int priority, thread_func *function,
   /* Add to run queue. */
   thread_unblock(t);
 
-  /* 우선순위가 높은 스레드가 들어오면 양도하기 위해. 자기자신이 가장 우선순위가
-   * 높으면 context switching (thread_launch)이 발생하지 않음 */
-  thread_yield();
+  if (!thread_mlfqs) {
+    /* 우선순위가 높은 스레드가 들어오면 양도하기 위해. 자기자신이 가장
+     * 우선순위가 높으면 context switching (thread_launch)이 발생하지 않음 */
+    thread_yield();
+  }
 
   return tid;
 }
@@ -261,7 +263,7 @@ void thread_wake(uint64_t ticks) {
 
   struct thread *curr;
   while (!list_empty(&sleep_queue)) {
-    curr = list_entry(list_front(&sleep_queue), struct thread, elem);
+    curr = thread_entry(list_front(&sleep_queue));
 
     if (curr->wake_tick <= ticks) {  // 만약 실행 시간이 지났으면
       list_pop_front(&sleep_queue);  // 슬립 큐에서 뽑고
@@ -368,15 +370,19 @@ void thread_yield(void) {
 void thread_set_priority(int new_priority) {
   thread_current()->priority = new_priority;
 
-  /* 우선순위가 높은 스레드가 들어오면 양도하기 위해. 자기자신이 가장 우선순위가
-   * 높으면 context switching (thread_launch)이 발생하지 않음 */
-  thread_yield();
+  if (!thread_mlfqs) {
+    /* 우선순위가 높은 스레드가 들어오면 양도하기 위해. 자기자신이 가장
+     * 우선순위가 높으면 context switching (thread_launch)이 발생하지 않음 */
+    thread_yield();
+  }
 }
 
 /* Returns the current thread's priority. */
 int thread_get_priority(void) {
-  /* max priority */
-  return thread_max_priority(thread_current());
+  if (!thread_mlfqs) {
+    return thread_max_priority(thread_current());
+  }
+  return thread_current()->priority;
 }
 
 /* Returns the specific thread's max priority */
@@ -501,7 +507,7 @@ static struct thread *next_thread_to_run(void) {
   if (list_empty(&ready_list))
     return idle_thread;
   else {
-    rtn = list_entry(list_pop_front(&ready_list), struct thread, elem);
+    rtn = thread_entry(list_pop_front(&ready_list));
     return rtn;
   }
 }
@@ -636,8 +642,7 @@ static void do_schedule(int status) {
   ASSERT(thread_current()->status == THREAD_RUNNING);
 
   while (!list_empty(&destruction_req)) {
-    struct thread *victim =
-        list_entry(list_pop_front(&destruction_req), struct thread, elem);
+    struct thread *victim = thread_entry(list_pop_front(&destruction_req));
     palloc_free_page(victim);
   }
   thread_current()->status = status;
@@ -695,16 +700,22 @@ static tid_t allocate_tid(void) {
   return tid;
 }
 
-/* list comparison functions */
-bool high_prio(struct list_elem *a, struct list_elem *b, void *) {
-  struct thread *first = list_entry(a, struct thread, elem);
-  struct thread *second = list_entry(b, struct thread, elem);
-  return (thread_max_priority(first) > thread_max_priority(second));
+/* re-order ready list */
+void thread_reorder(struct thread *t) {
+  ASSERT(t->status == THREAD_READY);
+  list_remove(&t->elem);
+  list_insert_ordered(&ready_list, &t->elem, high_prio, NULL);
 }
 
-/* wake tick 순으로 정렬 */
-bool less_tick(struct list_elem *a, struct list_elem *b, void *aux) {
-  struct thread *first = list_entry(a, struct thread, elem);
-  struct thread *second = list_entry(b, struct thread, elem);
-  return (first->wake_tick < second->wake_tick);
+/* list comparison functions */
+bool high_prio(struct list_elem *_a, struct list_elem *_b, void *) {
+  struct thread *a = thread_entry(_a);
+  struct thread *b = thread_entry(_b);
+  return (thread_max_priority(a) > thread_max_priority(b));
+}
+
+bool less_tick(struct list_elem *_a, struct list_elem *_b, void *aux) {
+  struct thread *a = thread_entry(_a);
+  struct thread *b = thread_entry(_b);
+  return (a->wake_tick < b->wake_tick);
 }

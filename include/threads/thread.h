@@ -28,6 +28,10 @@ typedef int tid_t;
 #define PRI_DEFAULT 31 /* Default priority. */
 #define PRI_MAX 63     /* Highest priority. */
 
+/* Get Thread List entry */
+#define thread_entry(t) list_entry(t, struct thread, elem)
+#define donate_entry(t) list_entry(t, struct thread, d_elem)
+
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
@@ -146,6 +150,7 @@ void thread_wake(uint64_t ticks);
 /* priority */
 int thread_get_priority(void);
 void thread_set_priority(int);
+void thread_reorder(struct thread *);
 int thread_max_priority(struct thread *);
 
 /* mlfq */
@@ -157,6 +162,7 @@ int thread_get_load_avg(void);
 /* list cmp funtcions */
 bool less_tick(struct list_elem *, struct list_elem *, void *);
 bool high_prio(struct list_elem *, struct list_elem *, void *);
+bool high_sema(struct list_elem *, struct list_elem *, void *);
 
 void do_iret(struct intr_frame *tf);
 
