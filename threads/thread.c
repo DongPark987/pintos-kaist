@@ -382,6 +382,12 @@ bool cmp_priority(const struct list_elem *a_, const struct list_elem *b_, void *
 	return (a->priority > b->priority);
 }
 
+bool cmp_donate_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
+{
+	const struct thread *a = list_entry(a_, struct thread, d_elem);
+	const struct thread *b = list_entry(b_, struct thread, d_elem);
+	return (a->priority > b->priority);
+}
 
 /*현재 쓰레드가 THREAD_READY 되어야 할 wakeTick을 설정하고
 block상태로 전환 밑 sleep_list에 추가 */

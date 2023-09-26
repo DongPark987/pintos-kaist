@@ -22,13 +22,13 @@ static const struct test tests[] =
     {"priority-donate-multiple", test_priority_donate_multiple},
     {"priority-donate-multiple2", test_priority_donate_multiple2},
     {"priority-donate-nest", test_priority_donate_nest},
-    {"priority-donate-sema", test_priority_donate_sema},
-    {"priority-donate-lower", test_priority_donate_lower},
-    {"priority-donate-chain", test_priority_donate_chain},
-    {"priority-fifo", test_priority_fifo},
-    {"priority-preempt", test_priority_preempt},
-    {"priority-sema", test_priority_sema},
-    {"priority-condvar", test_priority_condvar},
+    {"priority-donate-sema", test_priority_donate_sema}, // TODO:
+    {"priority-donate-lower", test_priority_donate_lower}, // TODO:
+    {"priority-donate-chain", test_priority_donate_chain}, // TODO:
+    {"priority-fifo", test_priority_fifo}, // TODO:
+    {"priority-preempt", test_priority_preempt}, 
+    {"priority-sema", test_priority_sema},// TODO:
+    {"priority-condvar", test_priority_condvar}, // TODO:
     {"mlfqs-load-1", test_mlfqs_load_1},
     {"mlfqs-load-60", test_mlfqs_load_60},
     {"mlfqs-load-avg", test_mlfqs_load_avg},

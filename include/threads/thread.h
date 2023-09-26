@@ -153,6 +153,8 @@ void do_iret (struct intr_frame *tf);
 */
 bool cmp_wake_tick(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 bool cmp_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
+bool cmp_donate_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
+
 void thread_sleep(int64_t ticks);
 void thread_wake(int64_t ticks);
 

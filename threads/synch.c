@@ -101,11 +101,13 @@ void sema_down(struct semaphore *sema)
    ASSERT(!intr_context());
 
    old_level = intr_disable();
+
    while (sema->value == 0)
    {
       list_insert_ordered(&sema->waiters, &thread_current()->elem, cmp_priority, NULL);
       thread_block();
    }
+
    sema->value--;
    intr_set_level(old_level);
 }
@@ -143,18 +145,18 @@ bool sema_try_down(struct semaphore *sema)
    and wakes up one thread of those waiting for SEMA, if any.
 
    This function may be called from an interrupt handler. */
-void
-sema_up (struct semaphore *sema) {
+void sema_up(struct semaphore *sema)
+{
    enum intr_level old_level;
 
-	ASSERT (sema != NULL);
+   ASSERT(sema != NULL);
 
-	old_level = intr_disable ();
-	if (!list_empty (&sema->waiters))
-		thread_unblock (list_entry (list_pop_front (&sema->waiters),
-					struct thread, elem));
+   old_level = intr_disable();
+   if (!list_empty(&sema->waiters))
+      thread_unblock(list_entry(list_pop_front(&sema->waiters), struct thread, elem));
    sema->value++;
-	intr_set_level (old_level);
+   // thread_yield();
+   intr_set_level(old_level);
 }
 
 static void sema_test_helper(void *sema_);
@@ -233,41 +235,30 @@ void lock_acquire(struct lock *lock)
 
    struct thread *holder;
    struct thread *donator;
-   int before_priority;
 
    if (lock->holder != NULL)
    {
-      // printf("\n========== lock_acquire에서 priority 변경 from: %s %d", lock->holder->name, lock->holder->priority);
-      // printf("\n=====lock holder: %s / priority: %d /", lock->holder->name, lock->holder->priority);
-
       // 만약 이미 다른 스레드가 락을 가지고 있다면 현재 스레드가 기다리는 락으로 현재 락을 추가
       thread_current()->wait_on_lock = lock;
 
       // Donate
       donator = thread_current();
       holder = lock->holder;
-      while (holder != NULL)
+
+      while (holder != NULL && holder->priority < donator->priority)
       {
-         // printf("========🥹나야나\n");
-         if (holder->priority < donator->priority)
-         {
-            holder->priority = donator->priority;
-            list_push_back(&holder->donators, &donator->d_elem);
-            // list_insert_ordered(&holder->donators, &donator->d_elem, cmp_priority, NULL);
-         }
+         holder->priority = donator->priority;
+         if (list_find(&holder->donators, &donator->d_elem, NULL) == NULL)
+            list_insert_ordered(&holder->donators, &donator->d_elem, cmp_donate_priority, NULL);
 
          donator = holder;
          holder = (holder->wait_on_lock != NULL) ? holder->wait_on_lock->holder : NULL;
       }
-      // printf("=========== 🚀 탈출\n");
-      // printf("🌟 size: %d\n", list_size(&lock->holder->donators));
-      // printf("👉🏻 lock holder: %s / priority: %d\n", thread_current()->name, lock->holder->priority);
    }
 
    sema_down(&lock->semaphore);
 
    lock->holder = thread_current();
-   // printf("\n➡️ lock holder: %s / priority: %d\n", lock->holder->name, lock->holder->priority);
    thread_yield();
 }
 
@@ -302,7 +293,8 @@ void lock_release(struct lock *lock)
    ASSERT(lock != NULL);
    ASSERT(lock_held_by_current_thread(lock));
 
-   sema_up(&lock->semaphore); // waiters 리스트의 가장 앞에 있는 스레드를 unblock해서 ready 상태로 만들고, sema value를 1 증가시키기
+   // waiters 리스트의 가장 앞에 있는 스레드를 unblock해서 ready 상태로 만들고, sema value를 1 증가시키기
+   sema_up(&lock->semaphore); 
 
    // donators에서 현재 락을 wait_on_lock으로 가지고 있는 스레드들을 찾아서 제거
    struct list_elem *e;
@@ -316,6 +308,7 @@ void lock_release(struct lock *lock)
    }
 
    lock->holder->priority = (!list_empty(&lock->holder->donators)) ? list_entry(list_max(&lock->holder->donators, cmp_priority, NULL), struct thread, d_elem)->priority : lock->holder->origin_priority;
+
    lock->holder = NULL;
    thread_yield();
 }
