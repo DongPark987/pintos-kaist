@@ -92,12 +92,12 @@ struct thread
 	enum thread_status status; /* Thread state. */
 	char name[16];			   /* Name (for debugging purposes). */
 	int priority;			   /* Priority. */
-	int donation_list[64];
+	int8_t donation_list[64];
 	int donation_cnt;
-	
+
 	struct thread *holder;
 	void *holder_lock;
-
+	int nice;
 	int64_t wake_tick;
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem; /* List element. */

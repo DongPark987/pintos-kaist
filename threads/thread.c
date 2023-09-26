@@ -376,7 +376,7 @@ bool cmp_priority(const struct list_elem *a_, const struct list_elem *b_, void *
 {
 	const struct thread *a = list_entry(a_, struct thread, elem);
 	const struct thread *b = list_entry(b_, struct thread, elem);
-	return (a->thread_get >= b->priority);
+	return (thread_get_priority_manual(a) > thread_get_priority_manual(b));
 }
 
 /*현재 쓰레드가 THREAD_READY 되어야 할 wakeTick을 설정하고
@@ -451,6 +451,7 @@ int thread_get_priority(void)
 
 int thread_get_priority_manual(struct thread *t)
 {
+	
 	if (t->donation_cnt == 0)
 	{
 		return t->priority;
