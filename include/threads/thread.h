@@ -100,6 +100,8 @@ struct thread {
   uint8_t donate_list[64]; /* 기증받은 priority */
   struct thread *holder;   /* 내가 donate했던 애 */
 
+  int nice; /* for mlfq scheduling */
+
   /* Shared between thread.c and synch.c. */
   struct list_elem elem; /* List element. */
 

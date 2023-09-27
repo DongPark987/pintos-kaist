@@ -238,12 +238,15 @@ void lock_acquire(struct lock *lock) {
       if (thread_max_priority(curr) > thread_max_priority(holder)) {
         holder->donate_list[thread_max_priority(curr)]++;
         holder = holder->holder;
-        if (lock->holder && lock->holder->status == THREAD_READY) {
-          thread_reorder(lock->holder);
-        }
       } else
         break;
     }
+
+    /* lock holder가 ready list에 있었다면 */
+    if (lock->holder && lock->holder->status == THREAD_READY) {
+      thread_reorder(lock->holder);
+    }
+
     /* 나의 홀더를 현재 lock->holder로 설정 */
     thread_current()->holder = lock->holder;
   }
