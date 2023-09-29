@@ -381,11 +381,25 @@ bool cmp_priority(const struct list_elem *a_, const struct list_elem *b_, void *
 	return (a->priority > b->priority);
 }
 
+bool cmp_less_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
+{
+	const struct thread *a = list_entry(a_, struct thread, elem);
+	const struct thread *b = list_entry(b_, struct thread, elem);
+	return (a->priority < b->priority);
+}
+
 bool cmp_donate_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
 {
 	const struct thread *a = list_entry(a_, struct thread, d_elem);
 	const struct thread *b = list_entry(b_, struct thread, d_elem);
 	return (a->priority > b->priority);
+}
+
+bool cmp_less_donate_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
+{
+	const struct thread *a = list_entry(a_, struct thread, d_elem);
+	const struct thread *b = list_entry(b_, struct thread, d_elem);
+	return (a->priority < b->priority);
 }
 
 /*현재 쓰레드가 THREAD_READY 되어야 할 wakeTick을 설정하고
@@ -437,7 +451,7 @@ void thread_set_priority(int new_priority)
 		thread_current()->priority = new_priority;
 	} else 
 	{
-		int maximum = list_entry(list_max(&thread_current()->donators, cmp_donate_priority, NULL), struct thread, d_elem)->priority;
+		int maximum = list_entry(list_max(&thread_current()->donators, cmp_less_donate_priority, NULL), struct thread, d_elem)->priority;
 		thread_current()->priority = (new_priority > maximum) ? new_priority : maximum;
 	}
 

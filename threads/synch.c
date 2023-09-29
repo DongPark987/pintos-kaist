@@ -153,7 +153,10 @@ void sema_up(struct semaphore *sema)
 
    old_level = intr_disable();
    if (!list_empty(&sema->waiters))
+   {
+      list_sort(&sema->waiters, cmp_priority, NULL);
       thread_unblock(list_entry(list_pop_front(&sema->waiters), struct thread, elem));
+   }
    sema->value++;
    thread_yield();
    intr_set_level(old_level);
@@ -313,7 +316,7 @@ void lock_release(struct lock *lock)
       }
       else
       {
-         thread_current()->priority = list_entry(list_max(&thread_current()->donators, cmp_donate_priority, NULL), struct thread, d_elem)->priority;
+         thread_current()->priority = list_entry(list_max(&thread_current()->donators, cmp_less_donate_priority, NULL), struct thread, d_elem)->priority;
       }
    }
 
