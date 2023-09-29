@@ -236,7 +236,6 @@ tid_t thread_create(const char *name, int priority,
 	t->tf.eflags = FLAG_IF;
 
 	/* Add to run queue. */
-
 	thread_unblock(t);
 	thread_yield();
 	return tid;
@@ -433,7 +432,18 @@ void thread_wake(int64_t ticks)
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void thread_set_priority(int new_priority)
 {
-	thread_current()->priority = new_priority;
+
+	if (list_empty(&thread_current()->donators)) {
+		thread_current()->priority = new_priority;
+	} else 
+	{
+		int maximum = list_entry(list_max(&thread_current()->donators, cmp_donate_priority, NULL), struct thread, d_elem)->priority;
+		thread_current()->priority = (new_priority > maximum) ? new_priority : maximum;
+	}
+
+	thread_current()->origin_priority = new_priority;
+
+	
 	/*더 높은 priority를 가진 thread가 들어오면 자원을 양도하기 위해
 	  일단 yield를 수행하고 readylist에서 가장 우선순위가 높은 thread부터
 	  실행한다. 자신이 우선순위가 가장 높은 경우 yield가 호출되어도 문맥 교환이
