@@ -94,6 +94,10 @@ static tid_t allocate_tid(void);
 
 #define fix_to_int_near(x) x >= 0 ? ((x + f / 2) / f) : ((x - f / 2) / f)
 
+#define subtract_fix(x, n) (x - n * f)
+
+#define add_fix(x, n) (x + n * f)
+
 // Global descriptor table for the thread_start.
 // Because the gdt will be setup after the thread_init, we should
 // setup temporal gdt first.
@@ -187,7 +191,7 @@ void thread_tick(void)
 #endif
 		else
 		{
-			t->recent_cpu++;
+			t->recent_cpu = add_fix(t->recent_cpu, 1);
 			kernel_ticks++;
 		}
 		// printf("틱틱 : %s ,%d \n", t->name, intr_get_level());
@@ -196,11 +200,27 @@ void thread_tick(void)
 		{
 			intr_yield_on_return();
 		}
+		if ((idle_ticks + kernel_ticks) % 4 == 0){
+			struct list_elem *cur = list_begin(&all_list);
+			while(cur!=list_end(&all_list)){
+				struct thread*t = list_entry(cur, struct thread, elem);
+				// printf("name: %s, p: %d\n",t->name,t->priority);
+				t->priority = PRI_MAX - fix_to_int_near((t->recent_cpu / 4))- (t->nice * 2);
+				cur = cur->next;
+			}
+
+		}
 		if ((idle_ticks + kernel_ticks) % 100 == 0)
 		{
 			load_avg = multiply_fix(16110, load_avg) + divide_fix(to_fix(1), to_fix(60)) * ready_threads;
-
-			// printf("%d r: %d\n", load_avg, ready_threads);
+			printf("%s,  %d r: %d\n",thread_current()->name, load_avg, ready_threads);
+			struct list_elem *cur = list_begin(&all_list);
+			while(cur!=list_end(&all_list)){
+				struct thread*t = list_entry(cur, struct thread, elem);
+				// printf("name: %s, p: %d\n",t->name,t->priority);
+				t->recent_cpu =  divide_fix((2 * load_avg) , (add_fix((2 * load_avg), 1))) * t->recent_cpu + t->nice;
+				cur = cur->next;
+			}
 		}
 
 		return;
@@ -340,6 +360,7 @@ void thread_unblock(struct thread *t)
 
 	old_level = intr_disable();
 	ASSERT(t->status == THREAD_BLOCKED);
+	// printf("\naaaaaaa:%d\n", thread_get_priority_manual(t));
 	if (thread_mlfqs)
 		list_insert_ordered(&ready_list[thread_get_priority_manual(t)], &t->elem, cmp_priority, NULL);
 	else
@@ -425,6 +446,8 @@ void thread_yield(void)
 	{
 		if (thread_mlfqs)
 		{
+			// printf("나이스%d\n",thread_get_priority());
+
 			list_insert_ordered(&ready_list[thread_get_priority()], &curr->elem, cmp_priority, NULL);
 		}
 		else
@@ -519,7 +542,7 @@ int thread_get_priority(void)
 
 	if (thread_mlfqs)
 	{
-		return 63 - (t->recent_cpu / 4) - (t->nice * 2);
+		return t->priority;
 	}
 
 	if (t->donation_cnt == 0)
@@ -538,9 +561,11 @@ int thread_get_priority(void)
 
 int thread_get_priority_manual(struct thread *t)
 {
+	if (t == idle_thread)
+		return 0;
 	if (thread_mlfqs)
 	{
-		return 63 - (t->recent_cpu / 4) - (t->nice * 2);
+		return t->priority;
 	}
 
 	if (t->donation_cnt == 0)
@@ -660,7 +685,7 @@ init_thread(struct thread *t, const char *name, int priority)
 	t->status = THREAD_BLOCKED;
 	strlcpy(t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t)t + PGSIZE - sizeof(void *);
-	if (!thread_mlfqs || t == idle_thread)
+	if (!thread_mlfqs)
 		t->priority = priority;
 	else
 	{
@@ -668,17 +693,20 @@ init_thread(struct thread *t, const char *name, int priority)
 		{
 			t->nice = 0;
 			t->recent_cpu = 0;
+			t->priority = PRI_MAX - fix_to_int_near(subtract_fix((t->recent_cpu / 4), (t->nice * 2)));
+			// printf("main %d \n", t->priority);
 		}
 		else
 		{
 			// printf("help\n");
 			t->nice = thread_current()->nice;
 			t->recent_cpu = thread_current()->recent_cpu;
-			t->priority = PRI_MAX - (t->recent_cpu / 4) - (t->nice * 2)
+			t->priority = PRI_MAX - fix_to_int_near(subtract_fix((t->recent_cpu / 4), (t->nice * 2)));
+			// printf("%d \n", t->priority);
 			// t->nice = 0;
 			// t->recent_cpu = 0;
 		}
-		t->priority = priority;
+		// t->priority = priority;
 
 		list_push_back(&all_list, &t->all_link);
 	}
