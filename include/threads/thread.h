@@ -102,9 +102,14 @@ struct thread
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem; /* List element. */
 
+	/* 모든 살아있는 쓰레드간 연결 */
+	struct list_elem all_link;
+	/* recent_cpu */
+	int recent_cpu;
+
 #ifdef USERPROG
-	/* Owned by userprog/process.c. */
-	uint64_t *pml4; /* Page map level 4 */
+		/* Owned by userprog/process.c. */
+		uint64_t *pml4; /* Page map level 4 */
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */

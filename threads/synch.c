@@ -176,6 +176,21 @@ void sema_up(struct semaphore *sema)
          thread_unblock(tmp_t);
       }
    }
+   else{ //고급 스케줄러
+   if (!list_empty(&sema->waiters))
+      {
+         tmp_elem = list_max((&sema->waiters), cmp_priority_max, NULL);
+         tmp_t = list_entry(tmp_elem, struct thread, elem);
+         if (curr->donation_list[thread_get_priority_manual(tmp_t)] != 0)
+         {
+            curr->donation_cnt--;
+            curr->donation_list[thread_get_priority_manual(tmp_t)]--;
+         }
+         list_remove(tmp_elem);
+         thread_unblock(tmp_t);
+      }
+
+   }
    sema->value++;
    thread_yield();
    intr_set_level(old_level);
