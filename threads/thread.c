@@ -28,6 +28,8 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+static struct list ready_queue[64];
+
 /*sleep List*/
 static struct list sleep_list;
 
@@ -56,6 +58,11 @@ static unsigned thread_ticks; /* # of timer ticks since last yield. */
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
+
+static int32_t load_avg;
+
+// Number of threads that are either running or ready to run at time of update
+static int ready_threads;
 
 static void kernel_thread(thread_func *, void *aux);
 
@@ -124,12 +131,17 @@ void thread_init(void)
 	list_init(&ready_list);
 	list_init(&sleep_list);
 	list_init(&destruction_req);
+	for (int i = PRI_MIN; i <= PRI_MAX; i++)
+		list_init(&ready_queue + i);
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread();
 	init_thread(initial_thread, "main", PRI_DEFAULT);
 	initial_thread->status = THREAD_RUNNING;
 	initial_thread->tid = allocate_tid();
+
+	ready_threads = 0;
+	load_avg = 0;
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -157,12 +169,12 @@ void thread_tick(void)
 {
 	struct thread *t = thread_current();
 
-  /* Update statistics. */
-  if (t == idle_thread)
-    idle_ticks++;
+	/* Update statistics. */
+	if (t == idle_thread)
+		idle_ticks++;
 #ifdef USERPROG
-  else if (t->pml4 != NULL)
-    user_ticks++;
+	else if (t->pml4 != NULL)
+		user_ticks++;
 #endif
 	else
 	{
@@ -238,6 +250,7 @@ tid_t thread_create(const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock(t);
 	thread_yield();
+
 	return tid;
 }
 
@@ -255,6 +268,8 @@ void thread_block(void)
 {
 	ASSERT(!intr_context());
 	ASSERT(intr_get_level() == INTR_OFF);
+	if (thread_current() != idle_thread)
+		ready_threads--;
 	thread_current()->status = THREAD_BLOCKED;
 	schedule();
 }
@@ -286,6 +301,10 @@ void thread_unblock(struct thread *t)
 	list_insert_ordered(&ready_list, &t->elem, cmp_priority, NULL);
 	t->status = THREAD_READY;
 	intr_set_level(old_level);
+
+	// mlfqs
+	if (t != idle_thread)
+		ready_threads++;
 }
 
 /* Returns the name of the running thread.
@@ -321,7 +340,7 @@ thread_current(void)
 	ASSERT(is_thread(t));
 	ASSERT(t->status == THREAD_RUNNING);
 
-  return t;
+	return t;
 }
 
 /* Returns the running thread's tid. */
@@ -416,7 +435,7 @@ void thread_sleep(int64_t ticks)
 		curr->wake_tick = ticks;
 		list_insert_ordered(&sleep_list, &curr->elem, cmp_wake_tick, NULL);
 	}
-	do_schedule(THREAD_BLOCKED);
+	thread_block();
 	intr_set_level(old_level);
 }
 
@@ -447,9 +466,11 @@ void thread_wake(int64_t ticks)
 void thread_set_priority(int new_priority)
 {
 
-	if (list_empty(&thread_current()->donators)) {
+	if (list_empty(&thread_current()->donators))
+	{
 		thread_current()->priority = new_priority;
-	} else 
+	}
+	else
 	{
 		int maximum = list_entry(list_max(&thread_current()->donators, cmp_less_donate_priority, NULL), struct thread, d_elem)->priority;
 		thread_current()->priority = (new_priority > maximum) ? new_priority : maximum;
@@ -457,13 +478,11 @@ void thread_set_priority(int new_priority)
 
 	thread_current()->origin_priority = new_priority;
 
-	
 	/*더 높은 priority를 가진 thread가 들어오면 자원을 양도하기 위해
 	  일단 yield를 수행하고 readylist에서 가장 우선순위가 높은 thread부터
 	  실행한다. 자신이 우선순위가 가장 높은 경우 yield가 호출되어도 문맥 교환이
 	  일어나지 않는다. */
 	thread_yield();
-
 }
 
 /* Returns the current thread's priority. */
@@ -475,21 +494,29 @@ int thread_get_priority(void)
 /* Sets the current thread's nice value to NICE. */
 void thread_set_nice(int nice UNUSED)
 {
-	/* TODO: Your implementation goes here */
+	// Sets the current thread's nice value to new nice
+	thread_current()->nice = nice;
+
+	// recalculates the thread's priority based on the new value
+
+	// If the running thread no longer has the highest priority, yields.
 }
 
 /* Returns the current thread's nice value. */
 int thread_get_nice(void)
 {
-	/* TODO: Your implementation goes here */
-	return 0;
+	return thread_current()->nice;
 }
 
 /* Returns 100 times the system load average. */
 int thread_get_load_avg(void)
 {
-	/* TODO: Your implementation goes here */
-	return 0;
+	return FIXED_TO_INT_NEAREST(FIXED_MULTIPLY_INT(load_avg, 100));
+}
+
+void thread_set_load_avg(void)
+{
+	load_avg = FIXED_MULTIPLY(FIXED_DIVIDE(INT_TO_FIXED(59), INT_TO_FIXED(60)), load_avg) + FIXED_DIVIDE(INT_TO_FIXED(1), INT_TO_FIXED(60)) * ready_threads;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
@@ -522,26 +549,26 @@ idle(void *idle_started_ UNUSED)
 		intr_disable();
 		thread_block();
 
-    /* Re-enable interrupts and wait for the next one.
+		/* Re-enable interrupts and wait for the next one.
 
-		   The `sti' instruction disables interrupts until the
-		   completion of the next instruction, so these two
-		   instructions are executed atomically.  This atomicity is
-		   important; otherwise, an interrupt could be handled
-		   between re-enabling interrupts and waiting for the next
-		   one to occur, wasting as much as one clock tick worth of
-		   time.
+			   The `sti' instruction disables interrupts until the
+			   completion of the next instruction, so these two
+			   instructions are executed atomically.  This atomicity is
+			   important; otherwise, an interrupt could be handled
+			   between re-enabling interrupts and waiting for the next
+			   one to occur, wasting as much as one clock tick worth of
+			   time.
 
-		   "인터럽트를 다시 활성화하고 다음 인터럽트를 기다립니다.
+			   "인터럽트를 다시 활성화하고 다음 인터럽트를 기다립니다.
 
-		   'sti' 명령은 다음 명령의 완료까지 인터럽트를 비활성화하므로
-		   이 두 개의 명령은 원자적으로 실행됩니다. 이 원자성은 중요합니다.
-		   그렇지 않으면 인터럽트가 인터럽트를 다시 활성화하고 다음 인터럽트가
-		   발생하기를 기다리는 사이에 처리될 수 있으며, 이로 인해 1클럭 틱만큼의
-		   시간이 낭비될 수 있습니다."
+			   'sti' 명령은 다음 명령의 완료까지 인터럽트를 비활성화하므로
+			   이 두 개의 명령은 원자적으로 실행됩니다. 이 원자성은 중요합니다.
+			   그렇지 않으면 인터럽트가 인터럽트를 다시 활성화하고 다음 인터럽트가
+			   발생하기를 기다리는 사이에 처리될 수 있으며, 이로 인해 1클럭 틱만큼의
+			   시간이 낭비될 수 있습니다."
 
-		   See [IA32-v2a] "HLT", [IA32-v2b] "STI", and [IA32-v3a]
-		   7.11.1 "HLT Instruction". */
+			   See [IA32-v2a] "HLT", [IA32-v2b] "STI", and [IA32-v3a]
+			   7.11.1 "HLT Instruction". */
 		asm volatile("sti; hlt" : : : "memory");
 	}
 }
@@ -723,8 +750,9 @@ schedule(void)
 	/* Mark us as running. */
 	next->status = THREAD_RUNNING;
 
-  /* Start new time slice. */
-  thread_ticks = 0;
+
+	/* Start new time slice. */
+	thread_ticks = 0;
 
 #ifdef USERPROG
 	/* Activate the new address space. */
@@ -767,5 +795,5 @@ allocate_tid(void)
 	tid = next_tid++;
 	lock_release(&tid_lock);
 
-  return tid;
+	return tid;
 }

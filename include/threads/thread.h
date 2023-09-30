@@ -28,6 +28,43 @@ typedef int tid_t;
 #define PRI_DEFAULT 31 /* Default priority. */
 #define PRI_MAX 63     /* Highest priority. */
 
+/* Fixed-Point Real Arithmetic */
+
+// Convert n to fixed point: n * f
+#define INT_TO_FIXED(n) ((n) * F)
+
+// Convert x to integer (rounding toward zero): x / f
+#define FIXED_TO_INT_ZERO(x) ((x) / F)
+
+// Convert x to integer (rounding to nearest):
+#define FIXED_TO_INT_NEAREST(x) (((x) >= 0) ? (((x) + F / 2) / F) : (((x) - F / 2) / F))
+
+// Add x and y: x + y
+#define FIXED_ADD(x, y) ((x) + (y))
+
+// Subtract y from x: x - y
+#define FIXED_SUBTRACT(x, y) ((x) - (y))
+
+// Add x and n: x + n * f
+#define FIXED_ADD_INT(x, n) ((x) + (n) * F)
+
+// Subtract n from x: x - n * f
+#define FIXED_SUBTRACT_INT(x, n) ((x) - (n) * F)
+
+// Multiply x by y: ((int64_t) x) * y / f
+#define FIXED_MULTIPLY(x, y) (((int64_t) (x)) * (y) / F)
+
+// Multiply x by n: x * n
+#define FIXED_MULTIPLY_INT(x, n) ((x) * (n))
+
+// Divide x by y: ((int64_t) x) * f / y
+#define FIXED_DIVIDE(x, y) (((int64_t) (x)) * F / (y))
+
+// Divide x by n: x / n
+#define FIXED_DIVIDE_INT(x, n) ((x) / (n))
+
+#define F (1 << 14) // 2^14, 고정 소수점 표현에서 사용하는 값
+
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
@@ -100,6 +137,8 @@ struct thread {
 	struct list_elem elem;              /* List element. */
   struct list_elem d_elem; /* donate list element */
 
+  int nice;
+
 #ifdef USERPROG
   /* Owned by userprog/process.c. */
   uint64_t *pml4; /* Page map level 4 */
@@ -145,6 +184,7 @@ int thread_get_nice(void);
 void thread_set_nice(int);
 int thread_get_recent_cpu(void);
 int thread_get_load_avg(void);
+void thread_set_load_avg(void);
 
 void do_iret (struct intr_frame *tf);
 

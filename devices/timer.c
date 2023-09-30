@@ -129,13 +129,17 @@ void timer_print_stats(void)
 static void
 timer_interrupt(struct intr_frame *args UNUSED)
 {
-
 	ticks++;
 	// printf("%lld  \n",timer_ticks());
 
 	thread_tick();
 	/*타이머 인터럽트 발생 시 쓰레드 sleep_list 확인*/
 	thread_wake(timer_ticks());
+
+	if (timer_ticks() % TIMER_FREQ == 0) {
+		// thread_get_recent_cpu();
+		thread_set_load_avg();
+	}
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
