@@ -168,4 +168,8 @@ void thread_wake(int64_t ticks);
 */
 bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 
+void calc_priority(void);
+
+void calc_receive();
+void calc_load();
 #endif /* threads/thread.h */

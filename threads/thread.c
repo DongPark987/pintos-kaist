@@ -86,17 +86,26 @@ static tid_t allocate_tid(void);
 /* 부동 소수점 다루기 */
 #define f 16384
 
+/* 정수를 실수로 */
 #define to_fix(n) (n * f)
 
+/* 실수간 나누기 */
 #define divide_fix(x, y) (((int64_t)x) * f / y)
 
+/* 실수간 곱셈 */
 #define multiply_fix(x, y) (((int64_t)x) * y / f)
 
+/* 실수를 가까운 정수로 변환 */
 #define fix_to_int_near(x) x >= 0 ? ((x + f / 2) / f) : ((x - f / 2) / f)
 
+/* 실수에서 너수 빼기 */
 #define subtract_fix(x, n) (x - n * f)
 
+/* 실수에서 정수 더하기 */
 #define add_fix(x, n) (x + n * f)
+
+/* 실수를 정수로 변환, 내림 */
+#define fix_to_int(x) (x / f)
 
 // Global descriptor table for the thread_start.
 // Because the gdt will be setup after the thread_init, we should
@@ -145,6 +154,7 @@ void thread_init(void)
 
 	/* mlfq용 모든 쓰레드 연결 리스트 초기화 */
 	list_init(&all_list);
+
 	load_avg = 0;
 	ready_threads = 0;
 
@@ -184,7 +194,9 @@ void thread_tick(void)
 	{
 		/* Update statistics. */
 		if (t == idle_thread)
+		{
 			idle_ticks++;
+		}
 #ifdef USERPROG
 		else if (t->pml4 != NULL)
 			user_ticks++;
@@ -200,27 +212,26 @@ void thread_tick(void)
 		{
 			intr_yield_on_return();
 		}
-		if ((idle_ticks + kernel_ticks) % 4 == 0){
-			struct list_elem *cur = list_begin(&all_list);
-			while(cur!=list_end(&all_list)){
-				struct thread*t = list_entry(cur, struct thread, elem);
-				// printf("name: %s, p: %d\n",t->name,t->priority);
-				t->priority = PRI_MAX - fix_to_int_near((t->recent_cpu / 4))- (t->nice * 2);
-				cur = cur->next;
-			}
-
+		if ((idle_ticks + kernel_ticks) % 4 == 0)
+		{
+			calc_priority();
 		}
 		if ((idle_ticks + kernel_ticks) % 100 == 0)
 		{
-			load_avg = multiply_fix(16110, load_avg) + divide_fix(to_fix(1), to_fix(60)) * ready_threads;
-			printf("%s,  %d r: %d\n",thread_current()->name, load_avg, ready_threads);
-			struct list_elem *cur = list_begin(&all_list);
-			while(cur!=list_end(&all_list)){
-				struct thread*t = list_entry(cur, struct thread, elem);
-				// printf("name: %s, p: %d\n",t->name,t->priority);
-				t->recent_cpu =  divide_fix((2 * load_avg) , (add_fix((2 * load_avg), 1))) * t->recent_cpu + t->nice;
-				cur = cur->next;
-			}
+			// load_avg = multiply_fix(16110, load_avg) + divide_fix(to_fix(1), to_fix(60)) * ready_threads;
+			// initial_thread->recent_cpu = add_fix(multiply_fix(divide_fix((2 * load_avg), (add_fix((2 * load_avg), 1))), t->recent_cpu), t->nice);
+
+			// for (struct list_elem *cur = list_begin(&all_list); cur != list_end(&all_list); cur = list_next(cur))
+			// {
+			// 	struct thread *t = list_entry(cur, struct thread, all_link);
+			// 	if (t == idle_thread)
+			// 		continue;
+			// 	// printf("name: %s, p: %d\n",t->name,t->priority);
+			// 	t->recent_cpu = add_fix(multiply_fix(divide_fix((2 * load_avg), (add_fix((2 * load_avg), 1))), t->recent_cpu), t->nice);
+			// 	// t->recent_cpu = (add_fix((multiply_fix((divide_fix((2 * load_avg) , (2 * load_avg + 1))), t->recent_cpu)), t->nice));
+			// }
+
+			// printf("%s,  load_avg, %d ready_threads: %d, priority: %d nice: %d, recint_cput: %d\n", thread_current()->name, load_avg, ready_threads, thread_current()->priority, thread_current()->nice, thread_get_recent_cpu());
 		}
 
 		return;
@@ -243,6 +254,24 @@ void thread_tick(void)
 	if (++thread_ticks >= TIME_SLICE)
 	{
 		intr_yield_on_return();
+	}
+}
+
+void calc_load()
+{
+	load_avg = multiply_fix(16110, load_avg) + divide_fix(to_fix(1), to_fix(60)) * ready_threads;
+}
+
+void calc_receive()
+{
+	for (struct list_elem *cur = list_begin(&all_list); cur != list_end(&all_list); cur = list_next(cur))
+	{
+		struct thread *t = list_entry(cur, struct thread, all_link);
+		if (t == idle_thread)
+			continue;
+		// printf("name: %s, p: %d\n",t->name,t->priority);
+		t->recent_cpu = add_fix(multiply_fix(divide_fix((2 * load_avg), (add_fix((2 * load_avg), 1))), t->recent_cpu), t->nice);
+		// t->recent_cpu = (add_fix((multiply_fix((divide_fix((2 * load_avg) , (2 * load_avg + 1))), t->recent_cpu)), t->nice));
 	}
 }
 
@@ -330,8 +359,9 @@ void thread_block(void)
 	ASSERT(!intr_context());
 	ASSERT(intr_get_level() == INTR_OFF);
 
-	if (thread_current() != idle_thread)
-		ready_threads--;
+	if (thread_current() != idle_thread && thread_mlfqs)
+		if (ready_threads > 0)
+			ready_threads--;
 	thread_current()->status = THREAD_BLOCKED;
 	schedule();
 }
@@ -362,12 +392,13 @@ void thread_unblock(struct thread *t)
 	ASSERT(t->status == THREAD_BLOCKED);
 	// printf("\naaaaaaa:%d\n", thread_get_priority_manual(t));
 	if (thread_mlfqs)
-		list_insert_ordered(&ready_list[thread_get_priority_manual(t)], &t->elem, cmp_priority, NULL);
+		list_push_back(&ready_list[thread_get_priority_manual(t)], &t->elem);
 	else
 		list_insert_ordered(&ready_list, &t->elem, cmp_priority, NULL);
 
 	t->status = THREAD_READY;
-	ready_threads++;
+	if (thread_mlfqs)
+		ready_threads++;
 	intr_set_level(old_level);
 }
 
@@ -426,6 +457,12 @@ void thread_exit(void)
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
 	intr_disable();
+	if (thread_mlfqs)
+	{
+		list_remove(&thread_current()->all_link);
+		if (ready_threads > 0)
+			ready_threads--;
+	}
 	do_schedule(THREAD_DYING);
 	NOT_REACHED();
 }
@@ -448,7 +485,7 @@ void thread_yield(void)
 		{
 			// printf("나이스%d\n",thread_get_priority());
 
-			list_insert_ordered(&ready_list[thread_get_priority()], &curr->elem, cmp_priority, NULL);
+			list_push_back(&ready_list[thread_get_priority()], &curr->elem);
 		}
 		else
 		{
@@ -482,6 +519,7 @@ void thread_sleep(int64_t ticks)
 	struct thread *curr = thread_current();
 	enum intr_level old_level;
 	ASSERT(!intr_context());
+
 	old_level = intr_disable();
 
 	if (curr != idle_thread)
@@ -582,12 +620,58 @@ int thread_get_priority_manual(struct thread *t)
 	}
 }
 
+/* mlfq 에서 쓰레드의 우선 순위 갱신 함수 */
+void calc_priority(void)
+{
+	// printf("aaa\n");
+
+	// initial_thread->priority = PRI_MAX - fix_to_int_near((initial_thread->recent_cpu / 4)) - (initial_thread->nice * 2);
+	if (list_empty(&all_list))
+	{
+		return;
+	}
+	for (struct list_elem *cur = list_begin(&all_list); cur != list_end(&all_list); cur = list_next(cur))
+	{
+		struct thread *t = list_entry(cur, struct thread, all_link);
+		// msg("asdfasdfadws:%s, aaaaa:    %d", t->name, tmp);
+		t->priority = PRI_MAX - fix_to_int((t->recent_cpu / 4)) - (t->nice * 2);
+		if (t->priority < 0)
+			t->priority = 0;
+		if (t->priority > 63)
+			t->priority = 63;
+		
+		if (t == idle_thread || t->status != THREAD_READY)
+			continue;
+		list_remove(&t->elem);
+		list_push_back(&ready_list[t->priority], &t->elem);
+	}
+	// struct list_elem *cur = list_begin(&all_list);
+	// while (cur != list_end(&all_list))
+	// {
+	// 	struct thread *t = list_entry(cur, struct thread, elem);
+	// 	list_remove(&t->elem);
+	// 	printf("name: %s, p: %d\n", t->name, t->priority);
+	// 	t->priority = PRI_MAX - fix_to_int_near((t->recent_cpu / 4)) - (t->nice * 2);
+	// 	// if(t== initial_thread)
+	// 	// 	printf("나는 메인\n");
+	// 	list_push_back(&ready_list[t->priority], &t->elem);
+	// 	cur = cur->next;
+	// }
+}
+
 /* Sets the current thread's nice value to NICE. */
 void thread_set_nice(int nice UNUSED)
 {
 	/* TODO: Your implementation goes here */
+	enum intr_level old_level;
+	old_level = intr_disable();
 	struct thread *t = thread_current();
 	t->nice = nice;
+	calc_priority();
+	intr_set_level(old_level);
+
+	// printf("nice: %d, recent_cpu: %d, priority: %d \n", t->nice, t->recent_cpu, t->priority);
+
 	thread_yield();
 }
 
@@ -611,7 +695,8 @@ int thread_get_load_avg(void)
 int thread_get_recent_cpu(void)
 {
 	/* TODO: Your implementation goes here */
-	return thread_current()->recent_cpu;
+	return fix_to_int_near(thread_current()->recent_cpu * 100);
+	// return fix_to_int_near((thread_current()->recent_cpu / 4));
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -636,7 +721,6 @@ idle(void *idle_started_ UNUSED)
 		/* Let someone else run. */
 		intr_disable();
 		thread_block();
-
 		/* Re-enable interrupts and wait for the next one.
 
 		   The `sti' instruction disables interrupts until the
@@ -693,22 +777,22 @@ init_thread(struct thread *t, const char *name, int priority)
 		{
 			t->nice = 0;
 			t->recent_cpu = 0;
-			t->priority = PRI_MAX - fix_to_int_near(subtract_fix((t->recent_cpu / 4), (t->nice * 2)));
-			// printf("main %d \n", t->priority);
+			t->priority = PRI_MAX;
+			list_push_back(&all_list, &t->all_link);
+
+			// printf("nice: %d, recent_cpu: %d, priority: %d \n", t->nice,t->recent_cpu, t->priority);
 		}
 		else
 		{
 			// printf("help\n");
 			t->nice = thread_current()->nice;
 			t->recent_cpu = thread_current()->recent_cpu;
-			t->priority = PRI_MAX - fix_to_int_near(subtract_fix((t->recent_cpu / 4), (t->nice * 2)));
-			// printf("%d \n", t->priority);
+			t->priority = PRI_MAX - (fix_to_int_near((t->recent_cpu / 4))) - (t->nice * 2);
+			list_push_back(&all_list, &t->all_link);
 			// t->nice = 0;
 			// t->recent_cpu = 0;
 		}
 		// t->priority = priority;
-
-		list_push_back(&all_list, &t->all_link);
 	}
 	t->magic = THREAD_MAGIC;
 	t->holder = NULL;

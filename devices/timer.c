@@ -132,6 +132,11 @@ timer_interrupt(struct intr_frame *args UNUSED)
 	// printf("%lld  \n",timer_ticks());
 
 	thread_tick();
+	if( timer_ticks() % TIMER_FREQ == 0){
+		calc_receive();
+		calc_load();
+	}
+	
 	/*타이머 인터럽트 발생 시 쓰레드 sleep_list 확인*/
 	thread_wake(timer_ticks());
 }
