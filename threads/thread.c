@@ -643,6 +643,7 @@ void calc_priority(void)
 		if (t == idle_thread || t->status != THREAD_READY)
 			continue;
 		list_remove(&t->elem);
+		
 		list_push_back(&ready_list[t->priority], &t->elem);
 	}
 	// struct list_elem *cur = list_begin(&all_list);
