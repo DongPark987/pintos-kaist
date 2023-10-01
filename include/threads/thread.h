@@ -135,9 +135,12 @@ struct thread {
   int64_t wake_tick;
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
-  struct list_elem d_elem; /* donate list element */
+  struct list_elem d_elem;            /* donate list element */
+  struct list_elem a_elem;            /* All list element */
 
+  /* mlfqs */
   int nice;
+  int recent_cpu; // the amount of CPU time a thread has received recently
 
 #ifdef USERPROG
   /* Owned by userprog/process.c. */
@@ -183,6 +186,7 @@ void thread_set_priority(int);
 int thread_get_nice(void);
 void thread_set_nice(int);
 int thread_get_recent_cpu(void);
+void thread_set_recent_cpu(void);
 int thread_get_load_avg(void);
 void thread_set_load_avg(void);
 
@@ -195,8 +199,8 @@ bool cmp_wake_tick(const struct list_elem *a, const struct list_elem *b, void *a
 bool cmp_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
 bool cmp_donate_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
 bool cmp_less_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
-
 bool cmp_less_donate_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
+bool cmp_recent_cpu(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
 
 void thread_sleep(int64_t ticks);
 void thread_wake(int64_t ticks);
@@ -205,5 +209,8 @@ void thread_wake(int64_t ticks);
 	priority
 */
 bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+
+void calculate_priority(struct thread *t);
+int find_highest_priority(void);
 
 #endif /* threads/thread.h */

@@ -29,7 +29,7 @@ static bool too_many_loops(unsigned loops);
 static void busy_wait(int64_t loops);
 static void real_time_sleep(int64_t num, int32_t denom);
 
-/* 
+/*
 초당 PIT_FREQ번의 인터럽트가 발생하도록 설정하는 함수
 Sets up the 8254 Programmable Interval Timer (PIT) to
    interrupt PIT_FREQ times per second, and registers the
@@ -130,16 +130,20 @@ static void
 timer_interrupt(struct intr_frame *args UNUSED)
 {
 	ticks++;
-	// printf("%lld  \n",timer_ticks());
+
+	// On each timer tick, the running thread's recent cpu is incremented by 1
+	if (strcmp(thread_current()->name, "idle") != 0 && thread_mlfqs)
+		thread_current()->recent_cpu = FIXED_ADD_INT(thread_current()->recent_cpu, 1);
+
+	if (timer_ticks() % TIMER_FREQ == 0 && thread_mlfqs)
+	{
+		thread_set_load_avg();
+		thread_set_recent_cpu();
+	}
 
 	thread_tick();
 	/*타이머 인터럽트 발생 시 쓰레드 sleep_list 확인*/
 	thread_wake(timer_ticks());
-
-	if (timer_ticks() % TIMER_FREQ == 0) {
-		// thread_get_recent_cpu();
-		thread_set_load_avg();
-	}
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
@@ -181,11 +185,11 @@ real_time_sleep(int64_t num, int32_t denom)
 {
 	/* Convert NUM/DENOM seconds into timer ticks, rounding down.
 
-     (NUM / DENOM) s
-     ---------------------- = NUM * TIMER_FREQ / DENOM ticks.
-     1 s / TIMER_FREQ ticks
-     */
-  int64_t ticks = num * TIMER_FREQ / denom;
+	 (NUM / DENOM) s
+	 ---------------------- = NUM * TIMER_FREQ / DENOM ticks.
+	 1 s / TIMER_FREQ ticks
+	 */
+	int64_t ticks = num * TIMER_FREQ / denom;
 
 	ASSERT(intr_get_level() == INTR_ON);
 	if (ticks > 0)
