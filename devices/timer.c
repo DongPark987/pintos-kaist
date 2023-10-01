@@ -119,6 +119,18 @@ static void timer_interrupt(struct intr_frame* args UNUSED) {
   ticks++;
   thread_tick();              /* 1 tick마다 실행된다 */
   thread_wake(timer_ticks()); /* 깨울 것이 있으면 깨운다 */
+
+  if (!thread_mlfqs) return;
+  thread_incr_recent_cpu();  // 1씩올림
+
+  if (timer_ticks() % TIMER_FREQ == 0) {
+    thread_set_load_avg();
+    thread_set_recent_cpu();
+  }
+
+  if (timer_ticks() % 4 == 0) {
+    thread_reset_priority();
+  }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

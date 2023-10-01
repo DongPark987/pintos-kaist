@@ -32,6 +32,15 @@ typedef int tid_t;
 #define thread_entry(t) list_entry(t, struct thread, elem)
 #define donate_entry(t) list_entry(t, struct thread, d_elem)
 
+/* Fixed-Point Real Arithmetic */
+#define F 16384                // 17.14 fixed-point
+#define int_to_fix(x) (x * F)  // convert to fixed-point
+#define fix_to_int(x) (x >= 0) ? ((x + F / 2) / F) : ((x - F / 2) / F)
+#define fix_mul_fix(x, y) (((int64_t)x) * y / F)  // to get (x*y) * f
+#define fix_div_fix(x, y) (((int64_t)x) * F / y)  // to get (x/y) * f
+#define fix_add_int(x, n) (x + n * F)             // x + n
+#define fix_sub_int(x, n) (x - n * F)             // x - n
+
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
@@ -100,10 +109,11 @@ struct thread {
   uint8_t donate_list[64]; /* 기증받은 priority */
   struct thread *holder;   /* 내가 donate했던 애 */
 
-  int nice; /* for mlfq scheduling */
+  int nice;       /* for mlfqs */
+  int recent_cpu; /* for mlfqs */
 
-  /* Shared between thread.c and synch.c. */
-  struct list_elem elem; /* List element. */
+  struct list_elem elem;   /* List element. */
+  struct list_elem a_elem; /* All thread list */
 
   uint64_t wake_tick; /* Wake Tick */
 
@@ -153,19 +163,38 @@ void thread_wake(uint64_t ticks);
 int thread_get_priority(void);
 void thread_set_priority(int);
 void thread_reorder(struct thread *);
-int thread_max_priority(struct thread *);
+int get_priority(struct thread *);
+void thread_set_recent_cpu(void);
 
 /* mlfq */
 int thread_get_nice(void);
 void thread_set_nice(int);
 int thread_get_recent_cpu(void);
 int thread_get_load_avg(void);
+void thread_set_load_avg(void);
+int get_recent_cpu(struct thread *);
+void set_recent_cpu(struct thread *);
+void thread_incr_recent_cpu(void);
+
+int calc_priority(struct thread *);
+
+void thread_reset_priority(void);
 
 /* list cmp funtcions */
 bool less_tick(struct list_elem *, struct list_elem *, void *);
 bool high_prio(struct list_elem *, struct list_elem *, void *);
 bool high_sema(struct list_elem *, struct list_elem *, void *);
+bool less_recent(struct list_elem *, struct list_elem *, void *);
 
 void do_iret(struct intr_frame *tf);
+
+/* list functions */
+typedef void list_iterate_func(struct list_elem *, void *);
+
+void list_iterate(struct list *, list_iterate_func, void *);
+struct list_elem *list_find(struct list *, struct list_elem *);
+
+/* iterate */
+void iterate_recent_cpu(struct list_elem *, void *);
 
 #endif /* threads/thread.h */
