@@ -283,7 +283,6 @@ void thread_block(void)
 {
 	ASSERT(!intr_context());
 	ASSERT(intr_get_level() == INTR_OFF);
-	// if (thread_current() != idle_thread)
 	if (strcmp(thread_current()->name, "idle") != 0)
 		ready_threads--;
 	thread_current()->status = THREAD_BLOCKED;
@@ -326,7 +325,6 @@ void thread_unblock(struct thread *t)
 	intr_set_level(old_level);
 
 	// mlfqs
-	// if (t != idle_thread)
 	if (strcmp(t->name, "idle") != 0)
 		ready_threads++;
 }
@@ -464,8 +462,7 @@ void thread_sleep(int64_t ticks)
 	ASSERT(!intr_context());
 	old_level = intr_disable();
 
-	// if (curr != idle_thread)
-	if (strcmp(curr->name, "idle") != 0)
+	if (curr != idle_thread)
 	{
 		curr->wake_tick = ticks;
 		list_insert_ordered(&sleep_list, &curr->elem, cmp_wake_tick, NULL);

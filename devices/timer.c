@@ -131,14 +131,18 @@ timer_interrupt(struct intr_frame *args UNUSED)
 {
 	ticks++;
 
-	// On each timer tick, the running thread's recent cpu is incremented by 1
-	if (strcmp(thread_current()->name, "idle") != 0 && thread_mlfqs)
-		thread_current()->recent_cpu = FIXED_ADD_INT(thread_current()->recent_cpu, 1);
-
-	if (timer_ticks() % TIMER_FREQ == 0 && thread_mlfqs)
+	if (thread_mlfqs)
 	{
-		thread_set_load_avg();
-		thread_set_recent_cpu();
+		// On each timer tick, the running thread's recent cpu is incremented by 1
+		if (strcmp(thread_current()->name, "idle") != 0)
+			thread_current()->recent_cpu = FIXED_ADD_INT(thread_current()->recent_cpu, 1);
+
+		// 100틱마다 load_avg 값과 모든 스레드의 recent_cpu	값 갱신
+		if (timer_ticks() % TIMER_FREQ == 0)
+		{
+			thread_set_load_avg();
+			thread_set_recent_cpu();
+		}
 	}
 
 	thread_tick();

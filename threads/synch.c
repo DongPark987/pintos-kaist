@@ -429,11 +429,8 @@ bool cmp_sema_elem_priority(const struct list_elem *a_, const struct list_elem *
    const struct semaphore_elem *a = list_entry(a_, struct semaphore_elem, elem);
    const struct semaphore_elem *b = list_entry(b_, struct semaphore_elem, elem);
 
-   struct semaphore *a_semaphore = &a->semaphore;
-   struct semaphore *b_semaphore = &b->semaphore;
-
-   struct list a_waiters = a_semaphore->waiters;
-   struct list b_waiters = b_semaphore->waiters;
+   struct list a_waiters = a->semaphore.waiters;
+   struct list b_waiters = b->semaphore.waiters;
 
    struct thread *a_thread = list_entry(list_front(&a_waiters), struct thread, elem);
    struct thread *b_thread = list_entry(list_front(&b_waiters), struct thread, elem);
