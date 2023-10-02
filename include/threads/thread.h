@@ -92,7 +92,9 @@ struct thread
 	enum thread_status status; /* Thread state. */
 	char name[16];			   /* Name (for debugging purposes). */
 	int priority;			   /* Priority. */
-	int8_t donation_list[64];
+
+	
+	int8_t donation_list[64]; /* 도네이션 리스트 */
 	int donation_cnt;
 
 	struct thread *holder;
@@ -103,7 +105,7 @@ struct thread
 	struct list_elem elem; /* List element. */
 
 	/* 모든 살아있는 쓰레드간 연결 */
-	struct list_elem all_link;
+	struct list_elem all_elem;
 	/* recent_cpu */
 	int recent_cpu;
 
@@ -163,14 +165,17 @@ bool cmp_wake_tick(const struct list_elem *a, const struct list_elem *b, void *a
 void thread_sleep(int64_t ticks);
 void thread_wake(int64_t ticks);
 
+
 /*
 	priority
 */
 bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 bool cmp_recent(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
+void thread_relocate_ready(struct thread *t);
 
+/*mlfq*/
+void thread_recent_cpu_incr(void);
 void thread_calc_priority(void);
-
-void thread_calc_recent_cpu();
-void thread_calc_load();
+void thread_calc_recent_cpu(void);
+void thread_calc_load(void);
 #endif /* threads/thread.h */

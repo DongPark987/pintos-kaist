@@ -101,7 +101,7 @@ void sema_down(struct semaphore *sema)
    old_level = intr_disable();
    while (sema->value == 0)
    {
-      list_insert_ordered(&sema->waiters, &thread_current()->elem, cmp_priority, NULL);
+      list_push_back(&sema->waiters, &thread_current()->elem);
       thread_block();
    }
    sema->value--;
@@ -155,39 +155,22 @@ bool cmp_priority_max(const struct list_elem *a_, const struct list_elem *b_, vo
 void sema_up(struct semaphore *sema)
 {
    enum intr_level old_level;
-   struct thread *tmp_t;
+   struct thread *max_t;
    struct thread *curr = thread_current();
-   struct list_elem *tmp_elem;
+   struct list_elem *max_elem;
 
    ASSERT(sema != NULL);
 
    old_level = intr_disable();
-   if (!thread_mlfqs)
+
+   if (!list_empty(&sema->waiters))
    {
-      if (!list_empty(&sema->waiters))
-      {
-         tmp_elem = list_max((&sema->waiters), cmp_priority_max, NULL);
-         tmp_t = list_entry(tmp_elem, struct thread, elem);
-         if (curr->donation_list[thread_get_priority_manual(tmp_t)] != 0)
-         {
-            curr->donation_cnt--;
-            curr->donation_list[thread_get_priority_manual(tmp_t)]--;
-         }
-         list_remove(tmp_elem);
-         thread_unblock(tmp_t);
-      }
+      max_elem = list_max((&sema->waiters), cmp_priority_max, NULL);
+      max_t = list_entry(max_elem, struct thread, elem);
+      list_remove(max_elem);
+      thread_unblock(max_t);
    }
-   // 고급 스케줄러
-   else
-   {
-      if (!list_empty(&sema->waiters))
-      {
-         tmp_elem = list_max((&sema->waiters), cmp_priority_max, NULL);
-         tmp_t = list_entry(tmp_elem, struct thread, elem);
-         list_remove(tmp_elem);
-         thread_unblock(tmp_t);
-      }
-   }
+
    sema->value++;
    thread_yield();
    intr_set_level(old_level);
@@ -289,56 +272,50 @@ void lock_acquire(struct lock *lock)
    struct thread *max_waiter_t;
    struct list_elem *max_waiter_elem;
 
-   if (!thread_mlfqs)
+   if (thread_mlfqs)
    {
-      if (lock->holder != NULL)
-      {
-         curr_t->holder_lock = lock;
-         curr_t->holder = lock->holder;
-
-         int curr_priority = thread_get_priority();
-         struct lock *next_lock = lock;
-         while (next_lock != NULL)
-         {
-            if (next_lock->holder->priority < curr_priority)
-            {
-               next_lock->holder->donation_cnt++;
-               next_lock->holder->donation_list[curr_priority]++;
-               next_lock->donation_list[curr_priority]++;
-               if (next_lock->holder->status == THREAD_READY)
-               {
-                  list_remove(&next_lock->holder->elem);
-                  // list_insert_ordered(&next_lock->holder->elem,)
-                  next_lock->holder->status = THREAD_BLOCKED;
-                  thread_unblock(next_lock->holder);
-               }
-            }
-            next_lock = next_lock->holder->holder_lock;
-         }
-      }
       sema_down(&lock->semaphore);
       curr_t->holder = NULL;
       curr_t->holder_lock = NULL;
       lock->holder = curr_t;
-      if (!list_empty(&lock->semaphore.waiters))
+      return;
+   }
+
+   if (lock->holder != NULL)
+   {
+      curr_t->holder_lock = lock;
+      curr_t->holder = lock->holder;
+
+      int curr_priority = thread_get_priority();
+      struct lock *next_lock = lock;
+      while (next_lock != NULL)
       {
-         max_waiter_elem = list_max((&lock->semaphore.waiters), cmp_priority_max, NULL);
-         max_waiter_t = list_entry(max_waiter_elem, struct thread, elem);
-         int tmp_priority = thread_get_priority_manual(max_waiter_t);
-         if (curr_t->priority < tmp_priority)
+         if (next_lock->holder->priority < curr_priority)
          {
-            curr_t->donation_cnt++;
-            curr_t->donation_list[tmp_priority]++;
-            lock->donation_list[tmp_priority]++;
+            next_lock->holder->donation_cnt++;
+            next_lock->holder->donation_list[curr_priority]++;
+            next_lock->donation_list[curr_priority]++;
+            if (next_lock->holder->status == THREAD_READY)
+               thread_relocate_ready(next_lock->holder);
          }
+         next_lock = next_lock->holder->holder_lock;
       }
    }
-   else
+   sema_down(&lock->semaphore);
+   curr_t->holder = NULL;
+   curr_t->holder_lock = NULL;
+   lock->holder = curr_t;
+   if (!list_empty(&lock->semaphore.waiters))
    {
-      sema_down(&lock->semaphore);
-      curr_t->holder = NULL;
-      curr_t->holder_lock = NULL;
-      lock->holder = curr_t;
+      max_waiter_elem = list_max((&lock->semaphore.waiters), cmp_priority_max, NULL);
+      max_waiter_t = list_entry(max_waiter_elem, struct thread, elem);
+      int max_priority = thread_get_priority_manual(max_waiter_t);
+      if (curr_t->priority < max_priority)
+      {
+         curr_t->donation_cnt++;
+         curr_t->donation_list[max_priority]++;
+         lock->donation_list[max_priority]++;
+      }
    }
 }
 
@@ -515,11 +492,9 @@ void cond_signal(struct condition *cond, struct lock *lock UNUSED)
    if (!list_empty(&cond->waiters))
    {
       struct list_elem *tmp_elem = list_max(&cond->waiters, cmp_cond_max, NULL);
-      const struct semaphore *s2 = &list_entry(tmp_elem, struct semaphore_elem, elem)->semaphore;
       list_remove(tmp_elem);
       sema_up(&list_entry(tmp_elem, struct semaphore_elem, elem)->semaphore);
    }
-   // sema_up(&list_entry(list_pop_front(&cond->waiters), struct semaphore_elem, elem)->semaphore);
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by

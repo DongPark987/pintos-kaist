@@ -127,18 +127,20 @@ void timer_print_stats(void)
 static void
 timer_interrupt(struct intr_frame *args UNUSED)
 {
-
 	ticks++;
-	// printf("%lld  \n",timer_ticks());
 	thread_tick();
-	if (timer_ticks() % TIMER_FREQ == 0)
+	/* mlfq 테스트만 사용 */
+	if (thread_mlfqs)
 	{
-		thread_calc_load();
-		thread_calc_recent_cpu();
-	}
-	if (timer_ticks() % 4 == 0)
-	{
-		thread_calc_priority();
+		thread_recent_cpu_incr();
+		if (timer_ticks() % TIMER_FREQ == 0)
+		{
+			thread_calc_load();
+			thread_calc_recent_cpu();
+		}
+		if (timer_ticks() % 4 == 0)
+			thread_calc_priority();
+
 	}
 
 	/*타이머 인터럽트 발생 시 쓰레드 sleep_list 확인*/
