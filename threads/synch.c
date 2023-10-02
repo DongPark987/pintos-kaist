@@ -250,6 +250,15 @@ void lock_acquire(struct lock *lock) {
 
   sema_down(&lock->semaphore);     /* waiters or get lock */
   lock->holder = thread_current(); /* 누군가가.. 락 획득 성공 */
+
+  /* waiters 중 donation 받아야 될 것 있는지 체크 */
+  if (!list_empty(&lock->semaphore.waiters)) {
+    curr = list_entry(list_min(&lock->semaphore.waiters, high_prio, NULL),
+                      struct thread, elem);
+    if (get_priority(curr) > thread_current()->priority) {
+      thread_current()->donate_list[get_priority(curr)]++;
+    }
+  }
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -279,12 +288,15 @@ static void iterate_reset_donate(struct list_elem *curr, void *aux) {
   struct thread *next = (struct thread *)aux;
   struct thread *t = list_entry(curr, struct thread, elem);
 
-  for (int i = 0; i < 64; i++) {
-    if (t->donate_list[i] > 0) {
-      thread_current()->donate_list[i]--;
+  if (get_priority(t) > thread_current()->priority) {
+    for (int i = 0; i < 64; i++) {
+      if (t->donate_list[i] > 0) {
+        thread_current()->donate_list[i]--;
+      }
     }
+    thread_current()->donate_list[t->priority]--;
   }
-  thread_current()->donate_list[t->priority]--;
+
   t->holder = next;
 }
 
