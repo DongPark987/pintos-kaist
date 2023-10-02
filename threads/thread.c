@@ -189,6 +189,7 @@ void thread_tick(void)
 	/* Enforce preemption. */
 	if (++thread_ticks >= TIME_SLICE)
 	{
+		// 4틱마다 우선순위 재계산
 		if (thread_mlfqs)
 			recalculate_all_priority();
 		intr_yield_on_return();
@@ -319,7 +320,7 @@ void thread_unblock(struct thread *t)
 	}
 	else
 	{
-		list_insert_ordered(&ready_list, &t->elem, cmp_priority, NULL);
+		list_insert_ordered(&ready_list, &t->elem, cmp_priority, GREATER);
 	}
 	t->status = THREAD_READY;
 	intr_set_level(old_level);
@@ -409,13 +410,9 @@ void thread_yield(void)
 	if (curr != idle_thread)
 	{
 		if (thread_mlfqs)
-		{
 			list_insert_ordered(&ready_queue[curr->priority], &curr->elem, cmp_recent_cpu, NULL);
-		}
 		else
-		{
-			list_insert_ordered(&ready_list, &curr->elem, cmp_priority, NULL);
-		}
+			list_insert_ordered(&ready_list, &curr->elem, cmp_priority, GREATER);
 	}
 
 	do_schedule(THREAD_READY);
@@ -430,32 +427,25 @@ bool cmp_wake_tick(const struct list_elem *a_, const struct list_elem *b_, void 
 	return (a->wake_tick < b->wake_tick);
 }
 
-bool cmp_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
+bool cmp_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux)
 {
 	const struct thread *a = list_entry(a_, struct thread, elem);
 	const struct thread *b = list_entry(b_, struct thread, elem);
-	return (a->priority > b->priority);
+	if (aux == SMALLER)
+		return (a->priority < b->priority);
+	else
+		return (a->priority > b->priority);
 }
 
-bool cmp_less_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
-{
-	const struct thread *a = list_entry(a_, struct thread, elem);
-	const struct thread *b = list_entry(b_, struct thread, elem);
-	return (a->priority < b->priority);
-}
-
-bool cmp_donate_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
+bool cmp_donate_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux)
 {
 	const struct thread *a = list_entry(a_, struct thread, d_elem);
 	const struct thread *b = list_entry(b_, struct thread, d_elem);
-	return (a->priority > b->priority);
-}
 
-bool cmp_less_donate_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
-{
-	const struct thread *a = list_entry(a_, struct thread, d_elem);
-	const struct thread *b = list_entry(b_, struct thread, d_elem);
-	return (a->priority < b->priority);
+	if (aux = SMALLER)
+		return (a->priority < b->priority);
+	else
+		return (a->priority > b->priority);
 }
 
 bool cmp_recent_cpu(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
@@ -517,7 +507,7 @@ void thread_set_priority(int new_priority)
 	}
 	else
 	{
-		int maximum = list_entry(list_max(&thread_current()->donators, cmp_less_donate_priority, NULL), struct thread, d_elem)->priority;
+		int maximum = list_entry(list_max(&thread_current()->donators, cmp_donate_priority, SMALLER), struct thread, d_elem)->priority;
 		thread_current()->priority = (new_priority > maximum) ? new_priority : maximum;
 	}
 
@@ -902,7 +892,6 @@ allocate_tid(void)
 void calculate_priority(struct thread *t)
 {
 	// priority = PRI_MAX - (recent_cpu / 4) - (nice * 2),
-	// int caculated_priority = PRI_MAX - ((t->recent_cpu / 4) / F) - (t->nice * 2);
 	int caculated_priority = PRI_MAX - (FIXED_TO_INT_ZERO(FIXED_DIVIDE_INT(t->recent_cpu, 4))) - (t->nice * 2);
 	if (caculated_priority <= PRI_MIN)
 	{
@@ -932,16 +921,4 @@ void recalculate_all_priority(void)
 			list_insert_ordered(&ready_queue[curr_thread->priority], &curr_thread->elem, cmp_recent_cpu, NULL);
 		}
 	}
-}
-
-int find_highest_priority(void)
-{
-	for (int i = PRI_MAX; i >= PRI_MIN; i--)
-	{
-		if (!list_empty(&ready_queue[i]))
-		{
-			return i;
-		}
-	}
-	return PRI_MIN;
 }

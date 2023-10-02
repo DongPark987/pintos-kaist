@@ -18,6 +18,12 @@ enum thread_status
   THREAD_DYING    /* About to be destroyed. */
 };
 
+enum cmp_option
+{
+  SMALLER,
+  GREATER
+};
+
 /* Thread identifier type.
    You can redefine this to whatever type you like. */
 typedef int tid_t;
@@ -195,22 +201,18 @@ void do_iret (struct intr_frame *tf);
 /*
 	timer_sleep() 구현
 */
-bool cmp_wake_tick(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
-bool cmp_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
-bool cmp_donate_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
-bool cmp_less_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
-bool cmp_less_donate_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
-bool cmp_recent_cpu(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
-
 void thread_sleep(int64_t ticks);
 void thread_wake(int64_t ticks);
 
-/*
-	priority
-*/
-bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 
+/* Compare 함수 */
+bool cmp_wake_tick(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+bool cmp_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux);
+bool cmp_donate_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux);
+bool cmp_recent_cpu(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
+
+/* mlfqs */
 void calculate_priority(struct thread *t);
-int find_highest_priority(void);
+void recalculate_all_priority(void);
 
 #endif /* threads/thread.h */

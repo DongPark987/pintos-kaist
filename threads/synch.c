@@ -104,7 +104,7 @@ void sema_down(struct semaphore *sema)
 
    while (sema->value == 0)
    {
-      list_insert_ordered(&sema->waiters, &thread_current()->elem, cmp_priority, NULL);
+      list_insert_ordered(&sema->waiters, &thread_current()->elem, cmp_priority, GREATER);
       thread_block();
    }
 
@@ -154,7 +154,7 @@ void sema_up(struct semaphore *sema)
    old_level = intr_disable();
    if (!list_empty(&sema->waiters))
    {
-      list_sort(&sema->waiters, cmp_priority, NULL);
+      list_sort(&sema->waiters, cmp_priority, GREATER);
       thread_unblock(list_entry(list_pop_front(&sema->waiters), struct thread, elem));
    }
    sema->value++;
@@ -315,20 +315,14 @@ void lock_release(struct lock *lock)
       }
       else
       {
-         thread_current()->priority = list_entry(list_max(&thread_current()->donators, cmp_less_donate_priority, NULL), struct thread, d_elem)->priority;
+         thread_current()->priority = list_entry(list_max(&thread_current()->donators, cmp_donate_priority, SMALLER), struct thread, d_elem)->priority;
       }
    }
 
-   // TODO:
-   // lock->holder = NULL;
+   lock->holder = NULL;
 
    // waiters 리스트의 가장 앞에 있는 스레드를 unblock해서 ready 상태로 만들고, sema value를 1 증가시키기
    sema_up(&lock->semaphore);
-
-   // thread_current()->priority = (!list_empty(&lock->holder->donators)) ? list_entry(list_max(&lock->holder->donators, cmp_priority, NULL), struct thread, d_elem)->priority : lock->holder->origin_priority;
-
-   lock->holder = NULL;
-   thread_yield();
 }
 
 /* Returns true if the current thread holds LOCK, false
@@ -411,9 +405,7 @@ void cond_signal(struct condition *cond, struct lock *lock UNUSED)
    if (!list_empty(&cond->waiters))
    {
       list_sort(&cond->waiters, cmp_sema_elem_priority, NULL);
-      sema_up(&list_entry(list_pop_front(&cond->waiters),
-                          struct semaphore_elem, elem)
-                   ->semaphore);
+      sema_up(&list_entry(list_pop_front(&cond->waiters), struct semaphore_elem, elem)->semaphore);
    }
 }
 

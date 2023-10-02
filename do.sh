@@ -3,4 +3,4 @@ make clean
 make
 cd build
 source ../../activate
-pintos -- -q -mlfqs run mlfqs-nice-10
+pintos -- -q run alarm-single
