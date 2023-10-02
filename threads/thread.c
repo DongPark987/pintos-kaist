@@ -65,7 +65,6 @@ static int ready_threads;
 static int load_avg;
 
 static void kernel_thread(thread_func *, void *aux);
-
 static void idle(void *aux UNUSED);
 static struct thread *next_thread_to_run(void);
 static void init_thread(struct thread *, const char *name, int priority);
@@ -95,7 +94,7 @@ static tid_t allocate_tid(void);
 /* 실수간 곱셈 */
 #define multiply_fix(x, y) (((int64_t)x) * y / f)
 
-/* 실수를 가까운 정수로 변환 */
+/* 실수를 정수로 변환(반올림)*/
 #define fix_to_int_near(x) x >= 0 ? ((x + f / 2) / f) : ((x - f / 2) / f)
 
 /* 실수에서 너수 빼기 */
@@ -104,7 +103,7 @@ static tid_t allocate_tid(void);
 /* 실수에서 정수 더하기 */
 #define add_fix(x, n) (x + n * f)
 
-/* 실수를 정수로 변환, 내림 */
+/* 실수를 정수로 변환 (내림) */
 #define fix_to_int(x) (x / f)
 
 // Global descriptor table for the thread_start.
@@ -133,6 +132,7 @@ static uint64_t gdt[3] = {0, 0x00af9a000000ffff, 0x00cf92000000ffff};
    이 함수를 호출한 후에는 thread_create()를 사용하여 스레드를 생성하기 전에 페이지 할당자를 초기화해야 합니다.
 
    이 함수가 완료될 때까지 thread_current()를 호출하는 것은 안전하지 않습니다. */
+
 void thread_init(void)
 {
 	ASSERT(intr_get_level() == INTR_OFF);
@@ -207,9 +207,7 @@ void thread_tick(void)
 		// printf("틱틱 : %s ,%d \n", t->name, intr_get_level());
 		/* Enforce preemption. */
 		if (++thread_ticks >= TIME_SLICE)
-		{
 			intr_yield_on_return();
-		}
 
 		return;
 	}
@@ -222,33 +220,28 @@ void thread_tick(void)
 		user_ticks++;
 #endif
 	else
-	{
-
 		kernel_ticks++;
-	}
+
 	// printf("틱틱 : %s ,%d \n", t->name, intr_get_level());
 	/* Enforce preemption. */
 	if (++thread_ticks >= TIME_SLICE)
-	{
 		intr_yield_on_return();
-	}
 }
 
-void calc_load()
+void thread_calc_load()
 {
 	load_avg = multiply_fix(divide_fix(to_fix(59), to_fix(60)), load_avg) + divide_fix(to_fix(1), to_fix(60)) * ready_threads;
 }
 
-void calc_recent_cpu()
+void thread_calc_recent_cpu()
 {
 	for (struct list_elem *cur = list_begin(&all_list); cur != list_end(&all_list); cur = list_next(cur))
 	{
 		struct thread *t = list_entry(cur, struct thread, all_link);
 		if (t == idle_thread)
 			continue;
-		// printf("name: %s, p: %d\n",t->name,t->priority);
+		// printf("name: %s, p: %d\n", t->name, t->priority);
 		t->recent_cpu = add_fix((multiply_fix(divide_fix((2 * load_avg), (add_fix((2 * load_avg), 1))), t->recent_cpu)), t->nice);
-		// t->recent_cpu = (add_fix((multiply_fix((divide_fix((2 * load_avg) , (2 * load_avg + 1))), t->recent_cpu)), t->nice));
 	}
 }
 
@@ -286,6 +279,7 @@ void thread_print_stats(void)
 
    제공된 코드는 새로운 스레드의 `priority` 멤버를 PRIORITY로 설정하지만, 실제 우선순위 스케줄링은 구현되어 있지 않습니다.
    우선순위 스케줄링은 Problem 1-3의 목표입니다. */
+
 tid_t thread_create(const char *name, int priority,
 					thread_func *function, void *aux)
 {
@@ -367,9 +361,9 @@ void thread_unblock(struct thread *t)
 
 	old_level = intr_disable();
 	ASSERT(t->status == THREAD_BLOCKED);
-	// printf("\naaaaaaa:%d\n", thread_get_priority_manual(t));
 	if (thread_mlfqs)
-		list_push_back(&ready_list[thread_get_priority_manual(t)], &t->elem);
+		list_insert_ordered(&ready_list[t->priority], &t->elem, cmp_recent, NULL);
+	// list_push_back(&ready_list[thread_get_priority_manual(t)], &t->elem);
 	else
 		list_insert_ordered(&ready_list, &t->elem, cmp_priority, NULL);
 
@@ -466,15 +460,9 @@ void thread_yield(void)
 	if (curr != idle_thread)
 	{
 		if (thread_mlfqs)
-		{
-			// printf("나이스%d\n",thread_get_priority());
 			list_insert_ordered(&ready_list[thread_get_priority()], &curr->elem, cmp_recent, NULL);
-			// list_push_back(&ready_list[thread_get_priority()], &curr->elem);
-		}
 		else
-		{
 			list_insert_ordered(&ready_list, &curr->elem, cmp_priority, NULL);
-		}
 	}
 
 	do_schedule(THREAD_READY);
@@ -512,7 +500,6 @@ void thread_sleep(int64_t ticks)
 		list_insert_ordered(&sleep_list, &curr->elem, cmp_wake_tick, NULL);
 	}
 	thread_block();
-	// do_schedule(THREAD_BLOCKED);
 	intr_set_level(old_level);
 }
 
@@ -562,9 +549,7 @@ int thread_get_priority(void)
 		return t->priority;
 
 	if (t->donation_cnt == 0)
-	{
 		return t->priority;
-	}
 	else
 	{
 		int i = 63;
@@ -583,9 +568,7 @@ int thread_get_priority_manual(struct thread *t)
 	}
 
 	if (t->donation_cnt == 0)
-	{
 		return t->priority;
-	}
 	else
 	{
 		int i = 63;
@@ -597,9 +580,8 @@ int thread_get_priority_manual(struct thread *t)
 }
 
 /* mlfq 에서 쓰레드의 우선 순위 갱신 함수 */
-void calc_priority(void)
+void thread_calc_priority(void)
 {
-
 	for (struct list_elem *cur = list_begin(&all_list); cur != list_end(&all_list); cur = list_next(cur))
 	{
 		struct thread *t = list_entry(cur, struct thread, all_link);
@@ -614,10 +596,8 @@ void calc_priority(void)
 			continue;
 		list_remove(&t->elem);
 		list_insert_ordered(&ready_list[t->priority], &t->elem, cmp_recent, NULL);
-
 		// list_push_back(&ready_list[t->priority], &t->elem);
 	}
-	// thread_yield();
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -628,9 +608,9 @@ void thread_set_nice(int nice UNUSED)
 	old_level = intr_disable();
 	struct thread *t = thread_current();
 	t->nice = nice;
-	calc_priority();
+	thread_calc_priority();
 	intr_set_level(old_level);
-	calc_priority();
+	thread_calc_priority();
 	// printf("nice: %d, recent_cpu: %d, priority: %d \n", t->nice, t->recent_cpu, t->priority);
 	thread_yield();
 }
@@ -742,7 +722,7 @@ init_thread(struct thread *t, const char *name, int priority)
 		{
 			t->nice = 0;
 			t->recent_cpu = 0;
-			t->priority = PRI_MAX;
+			t->priority = PRI_MAX - (fix_to_int((t->recent_cpu / 4))) - (t->nice * 2);
 			list_push_back(&all_list, &t->all_link);
 			// printf("nice: %d, recent_cpu: %d, priority: %d \n", t->nice,t->recent_cpu, t->priority);
 		}
@@ -785,10 +765,10 @@ next_thread_to_run(void)
 	}
 	else
 	{
-		if (list_empty(&ready_list[0]))
+		if (list_empty(&ready_list))
 			return idle_thread;
 		else
-			return list_entry(list_pop_front(&ready_list[0]), struct thread, elem);
+			return list_entry(list_pop_front(&ready_list), struct thread, elem);
 	}
 }
 

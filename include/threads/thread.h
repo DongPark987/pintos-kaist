@@ -108,8 +108,8 @@ struct thread
 	int recent_cpu;
 
 #ifdef USERPROG
-		/* Owned by userprog/process.c. */
-		uint64_t *pml4; /* Page map level 4 */
+	/* Owned by userprog/process.c. */
+	uint64_t *pml4; /* Page map level 4 */
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
@@ -167,9 +167,10 @@ void thread_wake(int64_t ticks);
 	priority
 */
 bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+bool cmp_recent(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
 
-void calc_priority(void);
+void thread_calc_priority(void);
 
-void calc_receive();
-void calc_load();
+void thread_calc_recent_cpu();
+void thread_calc_load();
 #endif /* threads/thread.h */

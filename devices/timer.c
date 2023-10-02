@@ -130,13 +130,17 @@ timer_interrupt(struct intr_frame *args UNUSED)
 
 	ticks++;
 	// printf("%lld  \n",timer_ticks());
-
 	thread_tick();
-	if( timer_ticks() % TIMER_FREQ == 0){
-		calc_receive();
-		calc_load();
+	if (timer_ticks() % TIMER_FREQ == 0)
+	{
+		thread_calc_load();
+		thread_calc_recent_cpu();
 	}
-	
+	if (timer_ticks() % 4 == 0)
+	{
+		thread_calc_priority();
+	}
+
 	/*타이머 인터럽트 발생 시 쓰레드 sleep_list 확인*/
 	thread_wake(timer_ticks());
 }

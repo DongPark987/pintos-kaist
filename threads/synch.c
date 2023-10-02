@@ -151,6 +151,7 @@ bool cmp_priority_max(const struct list_elem *a_, const struct list_elem *b_, vo
    "세마포어(SEMA)"에 대한 "Up" 또는 "V" 연산. SEMA의 값을 증가시키고
    SEMA를 기다리는 스레드 중 하나를 깨웁니다(만약 대기 중인 스레드가 있다면).
    이 함수는 인터럽트 핸들러에서 호출될 수 있습니다. */
+   
 void sema_up(struct semaphore *sema)
 {
    enum intr_level old_level;
@@ -176,20 +177,16 @@ void sema_up(struct semaphore *sema)
          thread_unblock(tmp_t);
       }
    }
-   else{ //고급 스케줄러
-   if (!list_empty(&sema->waiters))
+   // 고급 스케줄러
+   else
+   {
+      if (!list_empty(&sema->waiters))
       {
          tmp_elem = list_max((&sema->waiters), cmp_priority_max, NULL);
          tmp_t = list_entry(tmp_elem, struct thread, elem);
-         if (curr->donation_list[thread_get_priority_manual(tmp_t)] != 0)
-         {
-            curr->donation_cnt--;
-            curr->donation_list[thread_get_priority_manual(tmp_t)]--;
-         }
          list_remove(tmp_elem);
          thread_unblock(tmp_t);
       }
-
    }
    sema->value++;
    thread_yield();
@@ -297,27 +294,23 @@ void lock_acquire(struct lock *lock)
          curr_t->holder = lock->holder;
 
          int curr_priority = thread_get_priority();
-         if (thread_get_priority_manual(lock->holder) < curr_priority)
+         struct lock *next_lock = lock;
+         while (next_lock != NULL)
          {
-
-            struct lock *next_lock = lock;
-            while (next_lock != NULL)
+            if (next_lock->holder->priority < curr_priority)
             {
-               if (thread_get_priority_manual(next_lock->holder) < curr_priority)
+               next_lock->holder->donation_cnt++;
+               next_lock->holder->donation_list[curr_priority]++;
+               next_lock->donation_list[curr_priority]++;
+               if (next_lock->holder->status == THREAD_READY)
                {
-                  next_lock->holder->donation_cnt++;
-                  next_lock->holder->donation_list[curr_priority]++;
-                  next_lock->donation_list[curr_priority]++;
-                  if (next_lock->holder->status == THREAD_READY)
-                  {
-                     list_remove(&next_lock->holder->elem);
-                     // list_insert_ordered(&next_lock->holder->elem,)
-                     next_lock->holder->status = THREAD_BLOCKED;
-                     thread_unblock(next_lock->holder);
-                  }
+                  list_remove(&next_lock->holder->elem);
+                  // list_insert_ordered(&next_lock->holder->elem,)
+                  next_lock->holder->status = THREAD_BLOCKED;
+                  thread_unblock(next_lock->holder);
                }
-               next_lock = next_lock->holder->holder_lock;
             }
+            next_lock = next_lock->holder->holder_lock;
          }
       }
    }
