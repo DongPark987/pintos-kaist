@@ -151,7 +151,7 @@ bool cmp_priority_max(const struct list_elem *a_, const struct list_elem *b_, vo
    "세마포어(SEMA)"에 대한 "Up" 또는 "V" 연산. SEMA의 값을 증가시키고
    SEMA를 기다리는 스레드 중 하나를 깨웁니다(만약 대기 중인 스레드가 있다면).
    이 함수는 인터럽트 핸들러에서 호출될 수 있습니다. */
-   
+
 void sema_up(struct semaphore *sema)
 {
    enum intr_level old_level;
@@ -286,6 +286,9 @@ void lock_acquire(struct lock *lock)
    ASSERT(!intr_context());
    ASSERT(!lock_held_by_current_thread(lock));
    struct thread *curr_t = thread_current();
+   struct thread *max_waiter_t;
+   struct list_elem *max_waiter_elem;
+
    if (!thread_mlfqs)
    {
       if (lock->holder != NULL)
@@ -313,12 +316,30 @@ void lock_acquire(struct lock *lock)
             next_lock = next_lock->holder->holder_lock;
          }
       }
+      sema_down(&lock->semaphore);
+      curr_t->holder = NULL;
+      curr_t->holder_lock = NULL;
+      lock->holder = curr_t;
+      if (!list_empty(&lock->semaphore.waiters))
+      {
+         max_waiter_elem = list_max((&lock->semaphore.waiters), cmp_priority_max, NULL);
+         max_waiter_t = list_entry(max_waiter_elem, struct thread, elem);
+         int tmp_priority = thread_get_priority_manual(max_waiter_t);
+         if (curr_t->priority < tmp_priority)
+         {
+            curr_t->donation_cnt++;
+            curr_t->donation_list[tmp_priority]++;
+            lock->donation_list[tmp_priority]++;
+         }
+      }
    }
-
-   sema_down(&lock->semaphore);
-   lock->holder = curr_t;
-   curr_t->holder = NULL;
-   curr_t->holder_lock = NULL;
+   else
+   {
+      sema_down(&lock->semaphore);
+      curr_t->holder = NULL;
+      curr_t->holder_lock = NULL;
+      lock->holder = curr_t;
+   }
 }
 
 /* Tries to acquires LOCK and returns true if successful or false

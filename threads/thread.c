@@ -92,12 +92,12 @@ static tid_t allocate_tid(void);
 #define divide_fix(x, y) (((int64_t)x) * f / y)
 
 /* 실수간 곱셈 */
-#define multiply_fix(x, y) (((int64_t)x) * y / f)
+#define multiply_fix(x, y) (((int64_t)x) * y / f) 
 
 /* 실수를 정수로 변환(반올림)*/
 #define fix_to_int_near(x) x >= 0 ? ((x + f / 2) / f) : ((x - f / 2) / f)
 
-/* 실수에서 너수 빼기 */
+/* 실수에서 정수 빼기 */
 #define subtract_fix(x, n) (x - n * f)
 
 /* 실수에서 정수 더하기 */
