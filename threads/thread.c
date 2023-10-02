@@ -422,10 +422,14 @@ bool cmp_priority(const struct list_elem *a_, const struct list_elem *b_, void *
 {
 	const struct thread *a = list_entry(a_, struct thread, elem);
 	const struct thread *b = list_entry(b_, struct thread, elem);
-	if (aux == SMALLER)
+
+	switch ((enum cmp_option)aux)
+	{
+	case SMALLER:
 		return (a->priority < b->priority);
-	else
+	case GREATER:
 		return (a->priority > b->priority);
+	}
 }
 
 bool cmp_donate_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux)
@@ -433,17 +437,20 @@ bool cmp_donate_priority(const struct list_elem *a_, const struct list_elem *b_,
 	const struct thread *a = list_entry(a_, struct thread, d_elem);
 	const struct thread *b = list_entry(b_, struct thread, d_elem);
 
-	if (aux = SMALLER)
-		return (a->priority < b->priority);
-	else
-		return (a->priority > b->priority);
+	switch ((enum cmp_option)aux)
+	{
+	case SMALLER:
+		return (a->origin_priority < b->origin_priority);
+	case GREATER:
+		return (a->origin_priority > b->origin_priority);
+	}
 }
 
 bool cmp_recent_cpu(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
 {
 	const struct thread *a = list_entry(a_, struct thread, elem);
 	const struct thread *b = list_entry(b_, struct thread, elem);
-		return (a->recent_cpu < b->recent_cpu);
+	return (a->recent_cpu < b->recent_cpu);
 }
 
 /*현재 쓰레드가 THREAD_READY 되어야 할 wakeTick을 설정하고
@@ -686,10 +693,10 @@ next_thread_to_run(void)
 	}
 	else
 	{
-	if (list_empty(&ready_list))
-		return idle_thread;
-	else
-		return list_entry(list_pop_front(&ready_list), struct thread, elem);
+		if (list_empty(&ready_list))
+			return idle_thread;
+		else
+			return list_entry(list_pop_front(&ready_list), struct thread, elem);
 	}
 }
 

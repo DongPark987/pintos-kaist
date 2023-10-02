@@ -76,7 +76,6 @@ void sema_init(struct semaphore *sema, unsigned value)
    list_init(&sema->waiters);
 }
 
-// TODO:
 /* Down or "P" operation on a semaphore.  Waits for SEMA's value
    to become positive and then atomically decrements it.
 
@@ -221,7 +220,6 @@ void lock_init(struct lock *lock)
    sema_init(&lock->semaphore, 1);
 }
 
-// TODO:
 /* Acquires LOCK, sleeping until it becomes available if
    necessary.  The lock must not already be held by the current
    thread.
@@ -261,9 +259,23 @@ void lock_acquire(struct lock *lock)
 
    sema_down(&lock->semaphore);
 
+   // 현재 스레드가 lock을 acquire한 다음 lock의 waiters 중 현재 스레드보다 우선순위가 낮은 스레드들을 donators에 추가
+   for (struct list_elem *e = list_begin(&lock->semaphore.waiters); e != list_end(&lock->semaphore.waiters); e = list_next(e))
+   {
+      struct thread *waiter_thread = list_entry(e, struct thread, elem);
+      if (waiter_thread->priority > thread_current()->origin_priority)
+         if (list_find(&thread_current()->donators, &waiter_thread->d_elem, NULL) == NULL)
+            list_insert_ordered(&thread_current()->donators, &waiter_thread->d_elem, cmp_donate_priority, GREATER);
+   }
+
+   // donate 정보를 반영하여 현재 스레드의 priority 업데이트
+   if (list_empty(&thread_current()->donators))
+      thread_current()->priority = thread_current()->origin_priority;
+   else
+      thread_current()->priority = list_entry(list_max(&thread_current()->donators, cmp_donate_priority, SMALLER), struct thread, d_elem)->priority;
+
    lock->holder = thread_current();
    thread_current()->wait_on_lock = NULL;
-   // thread_yield();
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -285,7 +297,6 @@ bool lock_try_acquire(struct lock *lock)
    return success;
 }
 
-// TODO:
 /* Releases LOCK, which must be owned by the current thread.
    This is lock_release function.
 
@@ -302,21 +313,13 @@ void lock_release(struct lock *lock)
    if (!list_empty(&thread_current()->donators))
    {
       for (e = list_begin(&thread_current()->donators); e != list_end(&thread_current()->donators); e = list_next(e))
-      {
          if (list_entry(e, struct thread, d_elem)->wait_on_lock == lock)
-         {
             list_remove(e);
-         }
-      }
 
       if (list_empty(&thread_current()->donators))
-      {
          thread_current()->priority = thread_current()->origin_priority;
-      }
       else
-      {
          thread_current()->priority = list_entry(list_max(&thread_current()->donators, cmp_donate_priority, SMALLER), struct thread, d_elem)->priority;
-      }
    }
 
    lock->holder = NULL;
