@@ -227,27 +227,38 @@ void lock_acquire(struct lock *lock) {
   ASSERT(!intr_context());
   ASSERT(!lock_held_by_current_thread(lock));
 
+  if (thread_mlfqs) {
+    sema_down(&lock->semaphore);     /* waiters or get lock */
+    lock->holder = thread_current(); /* 누군가가.. 락 획득 성공 */
+    return;
+  }
+
   /* nested priority donation */
   struct thread *holder = lock->holder;
   struct thread *curr = thread_current();
 
   while (holder) {
     // holder의 original priority보다 크면 donate
-    if (get_priority(curr) > holder->priority) {
-      holder->donate_list[get_priority(curr)]++;
-      holder = holder->holder;
-    } else
-      break;
-  }
+    if (curr->priority > holder->priority) {
+      holder->donate_list[curr->priority]++;
+    }
 
-  /* lock holder가 ready list에 있었다면 */
-  if (lock->holder && lock->holder->status == THREAD_READY) {
-    thread_reorder(lock->holder);
+    // 나의 donate받은 priority가 holder의 original priority보다 크면
+    for (int i = PRI_MAX; i >= PRI_MIN; i--) {
+      if (curr->donate_list[i] > 0 && i > holder->priority) {
+        holder->donate_list[i]++;
+      }
+    }
+    /* lock holder가 ready list에 있으면 */
+    if (holder && holder->status == THREAD_READY) {
+      thread_reorder(holder);
+    }
+
+    holder = holder->holder;
   }
 
   /* 나의 홀더를 현재 lock->holder로 설정 */
   thread_current()->holder = lock->holder;
-
   sema_down(&lock->semaphore);     /* waiters or get lock */
   lock->holder = thread_current(); /* 누군가가.. 락 획득 성공 */
 
@@ -284,17 +295,19 @@ bool lock_try_acquire(struct lock *lock) {
 }
 
 // * iterate 내부 함수
-static void iterate_reset_donate(struct list_elem *curr, void *aux) {
+static void iterate_reset_donate(struct list_elem *elem, void *aux) {
+  struct thread *curr = thread_current();
   struct thread *next = (struct thread *)aux;
-  struct thread *t = list_entry(curr, struct thread, elem);
+  struct thread *t = list_entry(elem, struct thread, elem);
 
-  if (get_priority(t) > thread_current()->priority) {
-    for (int i = 0; i < 64; i++) {
-      if (t->donate_list[i] > 0) {
-        thread_current()->donate_list[i]--;
-      }
+  if (t->priority > curr->priority) {
+    curr->donate_list[t->priority]--;
+  }
+
+  for (int i = PRI_MAX; i >= PRI_MIN; i--) {
+    if (t->donate_list[i] > 0 && i > curr->priority) {
+      curr->donate_list[i]--;
     }
-    thread_current()->donate_list[t->priority]--;
   }
 
   t->holder = next;
@@ -304,21 +317,24 @@ static void iterate_reset_donate(struct list_elem *curr, void *aux) {
 void lock_release(struct lock *lock) {
   ASSERT(lock != NULL);
   ASSERT(lock_held_by_current_thread(lock));
-  struct list_elem *next_elem;
-  struct thread *next;
 
-  if (!list_empty(&lock->semaphore.waiters)) {
-    struct list_elem *curr;
-    struct thread *donator;
+  if (!thread_mlfqs) {
+    struct list_elem *next_elem;
+    struct thread *next;
 
-    /* unblock할 애 */
-    next_elem = list_min(&lock->semaphore.waiters, high_prio, NULL);
-    next = thread_entry(next_elem);
+    if (!list_empty(&lock->semaphore.waiters)) {
+      struct list_elem *curr;
+      struct thread *donator;
 
-    /* list를 돌면서 lock donation을 reset */
-    list_iterate(&lock->semaphore.waiters, iterate_reset_donate, next);
+      /* unblock할 애 */
+      next_elem = list_min(&lock->semaphore.waiters, high_prio, NULL);
+      next = thread_entry(next_elem);
 
-    thread_current()->holder = NULL;
+      /* list를 돌면서 lock donation을 reset */
+      list_iterate(&lock->semaphore.waiters, iterate_reset_donate, next);
+
+      thread_current()->holder = NULL;
+    }
   }
 
   lock->holder = NULL;

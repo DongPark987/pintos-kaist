@@ -41,59 +41,7 @@ struct lock_pair {
 static thread_func donor_thread_func;
 static thread_func interloper_thread_func;
 
-static void func() {
-  // 우선순위가 35보다 낮고 32보다 높은..
-  msg("my priority is %d", thread_get_priority());
-}
-
-static void func_low(struct lock_pair *locks) {
-  lock_acquire(locks->second);
-
-  msg("low got lock a, priority: %d", thread_get_priority());
-
-  lock_acquire(locks->first);
-  msg("low got lock a, priority: %d", thread_get_priority());
-  lock_release(locks->second);
-  msg("low priority: %d", thread_get_priority());
-
-  lock_release(locks->first);
-}
-
-static void func_mid(struct lock_pair *locks) {
-  lock_acquire(locks->first);
-  msg("mid got lock a, priority: %d", thread_get_priority());
-  lock_release(locks->first);
-}
-
-static void func_high(struct lock_pair *locks) {
-  lock_acquire(locks->second);
-  msg("high got lock b, priority: %d", thread_get_priority());
-  lock_release(locks->second);
-}
-
 void test_priority_donate_chain(void) {
-  //   struct lock first;
-  //   struct lock second;
-  //   struct lock_pair locks;
-
-  //   thread_set_priority(PRI_MIN);
-
-  //   lock_init(&first);
-  //   lock_init(&second);
-
-  //   locks.first = &first;
-  //   locks.second = &second;
-
-  //   lock_acquire(locks.first);
-
-  //   thread_create("low", PRI_DEFAULT + 1, func_low, &locks);
-  //   thread_create("mid", PRI_DEFAULT + 4, func_mid, &locks);
-  //   thread_create("high", PRI_DEFAULT + 8, func_high, &locks);
-  //   thread_create("extra", PRI_DEFAULT + 2, func, NULL);
-
-  //   msg("main release lock a");
-  //   lock_release(locks.first);
-
   int i;
   struct lock locks[NESTING_DEPTH - 1];
   struct lock_pair lock_pairs[NESTING_DEPTH];

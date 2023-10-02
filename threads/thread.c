@@ -184,14 +184,14 @@ tid_t thread_create(const char *name, int priority, thread_func *function,
   t->tf.rip = (uintptr_t)kernel_thread;  // kernel_thread function
   t->tf.R.rdi = (uint64_t)function;      // function 을 실행해라
   t->tf.R.rsi = (uint64_t)aux;           // aux 인자를 가지고
-  t->tf.ds = SEL_KDSEG;                  // data segment
+  t->tf.ds = SEL_KDSEG;                  // kernel data segment selector
   t->tf.es = SEL_KDSEG;
   t->tf.ss = SEL_KDSEG;
   t->tf.cs = SEL_KCSEG;
   t->tf.eflags = FLAG_IF;
 
   /* Add to All Thread List */
-  if (strcmp(name, "idle") && !list_find(&all_thread, &t->a_elem)) {
+  if (!list_find(&all_thread, &t->a_elem)) {
     list_push_back(&all_thread, &t->a_elem);
   }
 
@@ -266,14 +266,6 @@ void thread_block(void) {
   schedule();
 }
 
-/* Transitions a blocked thread T to the ready-to-run state.
-   This is an error if T is not blocked.  (Use thread_yield() to
-   make the running thread ready.)
-
-   This function does not preempt the running thread.  This can
-   be important: if the caller had disabled interrupts itself,
-   it may expect that it can atomically unblock a thread and
-   update other data. */
 void thread_unblock(struct thread *t) {
   enum intr_level old_level;
 
@@ -281,9 +273,9 @@ void thread_unblock(struct thread *t) {
   ASSERT(t->status == THREAD_BLOCKED);
 
   old_level = intr_disable();
-
   list_insert_ordered(&ready_list[get_priority(t)], &t->elem, less_recent,
                       NULL);
+
   t->status = THREAD_READY;
 
   ready_threads++;
@@ -499,6 +491,9 @@ static void idle(void *idle_started_ UNUSED) {
 
   idle_thread = thread_current();
   ready_threads--;  // idle_thread는 cnt에서 제외한다
+  if (thread_mlfqs) {
+    list_remove(&idle_thread->a_elem);
+  }
   sema_up(idle_started);
 
   for (;;) {
