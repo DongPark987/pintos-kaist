@@ -26,9 +26,7 @@
 
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
-static struct list ready_list;
-
-static struct list ready_queue[64];
+static struct list ready_list[64];
 
 static struct list all_list;
 
@@ -131,11 +129,10 @@ void thread_init(void)
 	/* Init the globla thread context */
 	lock_init(&tid_lock);
 	list_init(&all_list);
-	list_init(&ready_list);
 	list_init(&sleep_list);
 	list_init(&destruction_req);
 	for (int i = PRI_MIN; i <= PRI_MAX; i++)
-		list_init(&ready_queue[i]);
+		list_init(&ready_list[i]);
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread();
@@ -314,13 +311,9 @@ void thread_unblock(struct thread *t)
 	old_level = intr_disable();
 	ASSERT(t->status == THREAD_BLOCKED);
 	if (thread_mlfqs)
-	{
-		list_insert_ordered(&ready_queue[t->priority], &t->elem, cmp_recent_cpu, NULL);
-	}
+		list_insert_ordered(&ready_list[t->priority], &t->elem, cmp_recent_cpu, NULL);
 	else
-	{
 		list_insert_ordered(&ready_list, &t->elem, cmp_priority, GREATER);
-	}
 	t->status = THREAD_READY;
 	intr_set_level(old_level);
 
@@ -408,7 +401,7 @@ void thread_yield(void)
 	if (curr != idle_thread)
 	{
 		if (thread_mlfqs)
-			list_insert_ordered(&ready_queue[curr->priority], &curr->elem, cmp_recent_cpu, NULL);
+			list_insert_ordered(&ready_list[curr->priority], &curr->elem, cmp_recent_cpu, NULL);
 		else
 			list_insert_ordered(&ready_list, &curr->elem, cmp_priority, GREATER);
 	}
@@ -450,7 +443,7 @@ bool cmp_recent_cpu(const struct list_elem *a_, const struct list_elem *b_, void
 {
 	const struct thread *a = list_entry(a_, struct thread, elem);
 	const struct thread *b = list_entry(b_, struct thread, elem);
-	return (a->recent_cpu < b->recent_cpu);
+		return (a->recent_cpu < b->recent_cpu);
 }
 
 /*현재 쓰레드가 THREAD_READY 되어야 할 wakeTick을 설정하고
@@ -550,14 +543,7 @@ int thread_get_load_avg(void)
 
 void thread_set_load_avg(void)
 {
-	int ready = 0;
-
-	for (int i = PRI_MIN; i <= PRI_MAX; i++)
-	{
-		ready = ready + list_size(&ready_queue[i]);
-	}
-
-	// (59/60) * load_avg + (1/60) * ready_threads
+	// load_avg = (59/60) * load_avg + (1/60) * ready_threads
 	load_avg = FIXED_MULTIPLY(FIXED_DIVIDE(INT_TO_FIXED(59), INT_TO_FIXED(60)), load_avg) + FIXED_DIVIDE(INT_TO_FIXED(1), INT_TO_FIXED(60)) * ready_threads;
 }
 
@@ -691,19 +677,19 @@ next_thread_to_run(void)
 	{
 		for (int i = PRI_MAX; i >= PRI_MIN; i--)
 		{
-			if (!list_empty(&ready_queue[i]))
+			if (!list_empty(&ready_list[i]))
 			{
-				return list_entry(list_pop_front(&ready_queue[i]), struct thread, elem);
+				return list_entry(list_pop_front(&ready_list[i]), struct thread, elem);
 			}
 		}
 		return idle_thread;
 	}
 	else
 	{
-		if (list_empty(&ready_list))
-			return idle_thread;
-		else
-			return list_entry(list_pop_front(&ready_list), struct thread, elem);
+	if (list_empty(&ready_list))
+		return idle_thread;
+	else
+		return list_entry(list_pop_front(&ready_list), struct thread, elem);
 	}
 }
 
@@ -915,7 +901,7 @@ void recalculate_all_priority(void)
 		if (curr_thread->status == THREAD_READY)
 		{
 			list_remove(&curr_thread->elem);
-			list_insert_ordered(&ready_queue[curr_thread->priority], &curr_thread->elem, cmp_recent_cpu, NULL);
+			list_insert_ordered(&ready_list[curr_thread->priority], &curr_thread->elem, cmp_recent_cpu, NULL);
 		}
 	}
 }
