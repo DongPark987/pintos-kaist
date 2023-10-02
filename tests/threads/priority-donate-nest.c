@@ -40,7 +40,7 @@ test_priority_donate_nest (void)
   lock_init (&b);
 
   lock_acquire (&a);
-
+ 
   locks.a = &a;
   locks.b = &b;
   thread_create ("medium", PRI_DEFAULT + 1, medium_thread_func, &locks);
