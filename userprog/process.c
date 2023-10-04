@@ -328,6 +328,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	off_t file_ofs;
 	bool success = false;
 	int i;
+	char *save_ptr;
 
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create ();
@@ -336,7 +337,8 @@ load (const char *file_name, struct intr_frame *if_) {
 	process_activate (thread_current ());
 
 	/* Open executable file. */
-	file = filesys_open (file_name);
+	file = filesys_open (strtok_r (file_name, " ", &save_ptr));
+	printf("asdfasdfasdf\n");
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
