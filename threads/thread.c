@@ -200,7 +200,9 @@ tid_t thread_create(const char *name, int priority, thread_func *function,
 
   /* 우선순위가 높은 스레드가 들어오면 양도합니다. 자기자신이 가장
    * 우선순위가 높으면 context switching(thread_launch)이 발생하지 않습니다 */
-  thread_yield();
+  if (t->priority > thread_current()->priority) {
+    thread_yield();
+  }
 
   return tid;
 }
@@ -320,6 +322,7 @@ void thread_exit(void) {
 void thread_yield(void) {
   struct thread *curr = thread_current();
   enum intr_level old_level;
+
   ASSERT(!intr_context());
   old_level = intr_disable();
 
@@ -372,7 +375,7 @@ void set_recent_cpu(struct thread *t) {
 }
 
 // * find elem in list
-// TODO list.c로 옮기기
+// TODO: list.c로 옮기기
 struct list_elem *list_find(struct list *list, struct list_elem *tar) {
   if (list_empty(list)) return NULL;
 
@@ -622,9 +625,7 @@ static void thread_launch(struct thread *th) {
    * until switching is done. */
 
   __asm __volatile(
-      /* Store registers that will be used.
-       *
-       */
+      /* Store registers that will be used. */
       "push %%rax\n"
       "push %%rbx\n"
       "push %%rcx\n"
@@ -722,7 +723,6 @@ static void schedule(void) {
       ASSERT(curr != next);
       list_push_back(&destruction_req, &curr->elem);
     }
-
     thread_launch(next);
   }
 }

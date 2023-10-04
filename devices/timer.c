@@ -93,11 +93,6 @@ void timer_sleep(int64_t ticks) {
 
   /* thread sleep 방식 */
   thread_sleep(ticks + timer_ticks());
-
-  /* busy wait 방식
-    while (timer_elapsed(start) < ticks) {
-      thread_yield();
-    } */
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -121,7 +116,8 @@ static void timer_interrupt(struct intr_frame* args UNUSED) {
   thread_wake(timer_ticks()); /* 깨울 것이 있으면 깨운다 */
 
   if (!thread_mlfqs) return;
-  thread_incr_recent_cpu();  // 1씩올림
+
+  thread_incr_recent_cpu();
 
   if (timer_ticks() % TIMER_FREQ == 0) {
     thread_set_load_avg();

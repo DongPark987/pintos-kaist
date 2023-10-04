@@ -1,10 +1,10 @@
-# For thread
-cd threads
+# cd threads
+cd userprog
 make clean
 make
 cd build
 source ../../activate
-# pintos -- -q run priority-donate-multiple2
 # pintos -- -q run priority-donate-chain
-pintos -- -q -mlfqs run mlfqs-load-1
-# pintos -- -q -mlfqs run mlfqs-fair-2
+
+# pintos --gdb --fs-disk=10 -p tests/userprog/args-single:args-single -- -q -f run 'args-single onearg'
+pintos --fs-disk=10 -p tests/userprog/args-single:args-single -- -q -f run 'args-single onearg'

@@ -128,17 +128,23 @@ void sema_up(struct semaphore *sema) {
   enum intr_level old_level;
   ASSERT(sema != NULL);
   old_level = intr_disable(); /* 인터럽트 끄고 */
+  struct list_elem *next_elem = NULL;
+  struct thread *next = NULL;
+
+  sema->value++; /* 자리 있음을 알림 */
 
   if (!list_empty(&sema->waiters)) {
     /* unblock할 애 */
-    struct list_elem *next_elem = list_min(&sema->waiters, high_prio, NULL);
-    struct thread *next = thread_entry(next_elem);
+    next_elem = list_min(&sema->waiters, high_prio, NULL);
+    next = thread_entry(next_elem);
     list_remove(next_elem);
     thread_unblock(next);
-  }
 
-  sema->value++;             /* 자리 있음을 알림 */
-  thread_yield();            /* 우선순위 높은 애가 풀려났으면 */
+    /* 우선순위 높은 애가 풀려났으면 */
+    if (next->priority > thread_current()->priority) {
+      thread_yield();
+    }
+  }
   intr_set_level(old_level); /* 인터럽트 활성화 */
 }
 

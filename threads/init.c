@@ -79,13 +79,13 @@ int main(void) {
 
   /* Initialize ourselves as a thread so we can use locks,
      then enable console locking. */
-  thread_init();
+  thread_init();  // lock
   console_init();
 
   /* Initialize memory system. */
   mem_end = palloc_init();
   malloc_init();
-  paging_init(mem_end);
+  paging_init(mem_end);  // base_pml4 초기화
 
 #ifdef USERPROG
   tss_init();
