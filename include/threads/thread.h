@@ -111,7 +111,7 @@ struct thread
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
-	uint64_t *pml4; /* Page map level 4 */
+	uint64_t *pml4; /* Page map level 4 (페이지 디렉터리 포인터 테이블의 위치를 나타냄. 가상 메모리 주소와 물리 메모리 주소 간의 매핑을 조직화함) */
 #endif
 #ifdef VM
   /* Table for whole virtual memory owned by thread. */

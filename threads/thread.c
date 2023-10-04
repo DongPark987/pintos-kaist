@@ -863,6 +863,7 @@ schedule(void)
 
 #ifdef USERPROG
 	/* Activate the new address space. */
+	// next->pml4 = pml4_create();
 	process_activate(next);
 #endif
 
