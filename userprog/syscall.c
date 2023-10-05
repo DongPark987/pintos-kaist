@@ -81,6 +81,7 @@ void syscall_handler(struct intr_frame *f UNUSED)
   case SYS_TELL:
     break;
   case SYS_CLOSE:
+    close(f->R.rdi);
     break;
 
   default:
@@ -88,17 +89,39 @@ void syscall_handler(struct intr_frame *f UNUSED)
   }
 }
 
+/*
+Terminates Pintos by calling power_off() (declared in src/include/threads/init.h). 
+This should be seldom used, because you lose some information about possible deadlock situations, etc.
+*/
 void halt(void)
 {
+  // Terminating a process implicitly closes all its open file descriptors
+  for (int fd = 0; fd <= thread_current()->fd_cnt; fd++)
+    close(fd);
   power_off();
 }
 
+/*
+Terminates the current user program, returning status to the kernel. 
+If the process's parent waits for it (see below), this is the status that will be returned. 
+Conventionally, a status of 0 indicates success and nonzero values indicate errors.
+*/
 void exit(int status)
 {
+  // Exiting a process implicitly closes all its open file descriptors
+  for (int fd = 0; fd <= thread_current()->fd_cnt; fd++)
+    close(fd);
+
   thread_current()->tf.R.rdi = status;
   thread_exit();
 }
 
+/*
+Creates a new file called file initially initial_size bytes in size. 
+Returns true if successful, false otherwise. 
+Creating a new file does not open it: 
+opening the new file is a separate operation which would require a open system call.
+*/
 bool create(const char *file, unsigned initial_size)
 {
   if (file != NULL && strlen(file) == 0)
@@ -133,4 +156,14 @@ int open(const char *file)
   *thread_current()->fdt = filesys_open(file);
   thread_current()->fd_cnt++;
   return thread_current()->fd_cnt;
+}
+
+/*
+Closes file descriptor fd. 
+Exiting or terminating a process implicitly closes all its open file descriptors, 
+as if by calling this function for each one.
+*/
+void close (int fd)
+{
+  file_close(thread_current()->fdt[fd]);
 }
