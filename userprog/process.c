@@ -24,6 +24,8 @@
 #include "vm/vm.h"
 #endif
 
+#define MAX_ARGS 100
+
 static void process_cleanup(void);
 static bool load(const char *file_name, struct intr_frame *if_);
 static void initd(void *f_name);
@@ -51,6 +53,10 @@ tid_t process_create_initd(const char *file_name) {
   strlcpy(fn_copy, file_name, PGSIZE);
 
   /* Create a new thread to execute FILE_NAME. */
+  char *save_ptr;
+  strtok_r(file_name, " ", &save_ptr);
+
+  // TODO: 우선순위 높여둔 거 확인
   tid = thread_create(file_name, PRI_DEFAULT + 1, initd, fn_copy);
   if (tid == TID_ERROR) palloc_free_page(fn_copy);
   return tid;
@@ -63,7 +69,6 @@ static void initd(void *f_name) {
 #endif
 
   process_init();
-
   if (process_exec(f_name) < 0) PANIC("Fail to launch initd\n");
   NOT_REACHED();
 }
@@ -310,38 +315,18 @@ static bool load(const char *file_name, struct intr_frame *if_) {
   bool success = false;
   int i;
 
-  int max_num = 10;
-  char *args[max_num];
+  /* Arguments to pass. */
+  char *args[MAX_ARGS];
 
-  /* f_name parsing, limit 128byte */
+  /* Parse f_name. */
   char *token, *save_ptr;
-  int args_cnt = 0;
+  int args_cnt = 0, args_len = 0;
 
   for (token = strtok_r(file_name, " ", &save_ptr); token != NULL;
        token = strtok_r(NULL, " ", &save_ptr)) {
     args[args_cnt++] = token;
+    args_len += strlen(token) + 1;
   }
-
-  //   int left = 0;
-  //   char buf[8];
-  //   for (int i = args_cnt - 1; i >= 0; i--) {
-  //     // 8byte씩 push
-  //     left = strlen(args[i]);
-  //     __asm __volatile("pushq %0\n" : : "g"(left));
-
-  //     for (int j = 0; left > 0; j++) {
-  //       snprintf(buf, 8, "%s", args[i] + (8 * j));
-  //       //   printf("🔥 %s\n", buf);
-  //       left -= 8;
-  //     }
-  //   }
-
-  //   __asm __volatile(
-  //       "pushq 0(%%rsp)\n"
-  //       "pushq 8(%%rsp)\n"
-  //       "pushq $0"
-  //       :
-  //       :);
 
   /* Allocate and activate page directory. */
   t->pml4 = pml4_create();  // 여기서 초기화됨
@@ -422,6 +407,47 @@ static bool load(const char *file_name, struct intr_frame *if_) {
   /* Start address. */
   if_->rip = ehdr.e_entry;
 
+  /* Argument passing. */
+  if_->rsp -= ROUND_UP(args_len, 8);
+
+  char *cur = if_->rsp;  // 문자열 부분 시작점
+  char *des = if_->rsp;  // 다음에 스택에 쓸 곳
+
+  /* Push string arguments. */
+  for (int i = 0; i < args_cnt; i++) {
+    memcpy(des, args[i], strlen(args[i]) + 1);
+    des += (strlen(args[i]) + 1);
+  }
+
+  /* Push 0. */
+  if_->rsp -= sizeof(uintptr_t);
+  memset(if_->rsp, 0, sizeof(uintptr_t));
+
+  /* Push arguments' address. */
+  if_->rsp -= (args_cnt * sizeof(uintptr_t));
+  des = if_->rsp;
+
+  for (int i = 0; i < args_cnt; i++) {
+    __asm __volatile(
+        "movq %0, %%rax\n"
+        "movq %1, %%rcx\n"
+        "movq %%rax, (%%rcx)\n"
+        :
+        : "g"(cur), "g"(des)
+        :);
+    cur += (strlen(args[i]) + 1);
+    des += sizeof(uintptr_t);
+  }
+
+  /* Set arguments. */
+  if_->R.rsi = (uint64_t)if_->rsp;
+  if_->R.rdi = (uint64_t)args_cnt;
+
+  /* Push return address. */
+  if_->rsp -= sizeof(uintptr_t);
+  memset(if_->rsp, 0, sizeof(uintptr_t));
+
+  /* Return value. */
   success = true;
 
 done:

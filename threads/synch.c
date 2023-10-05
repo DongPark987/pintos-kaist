@@ -141,7 +141,7 @@ void sema_up(struct semaphore *sema) {
     thread_unblock(next);
 
     /* 우선순위 높은 애가 풀려났으면 */
-    if (next->priority > thread_current()->priority) {
+    if (!intr_context() && next->priority > thread_current()->priority) {
       thread_yield();
     }
   }
