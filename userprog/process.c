@@ -42,6 +42,7 @@ tid_t process_create_initd(const char *file_name)
 {
 	char *fn_copy;
 	tid_t tid;
+	char *save_ptr;
 
 	/* Make a copy of FILE_NAME.
 	 * Otherwise there's a race between the caller and load(). */
@@ -51,7 +52,8 @@ tid_t process_create_initd(const char *file_name)
 	strlcpy(fn_copy, file_name, PGSIZE);
 
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create(file_name, PRI_DEFAULT, initd, fn_copy);
+	strtok_r(file_name, " ", &save_ptr);
+	tid = thread_create(file_name, PRI_DEFAULT + 1, initd, fn_copy);
 	if (tid == TID_ERROR)
 		palloc_free_page(fn_copy);
 	return tid;
@@ -355,21 +357,24 @@ static bool load(const char *file_name_and_arg, struct intr_frame *if_)
 	struct file *file = NULL;
 	off_t file_ofs;
 	bool success = false;
-	int i = 0;
+	int i;
+	uint64_t argc = 0;
 
 	char *file_name;
 
 	char *token, *save_ptr;
-	char *args[10];
+	char *argv[30];
+	int total_bytes = 0;
+	void *destination;
+	char *stack_addr[30];
 
-	// for (token = strtok_r(file_name_and_arg, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr))
-	// {
-	// 	if (i == 0)
-	// 		file_name = token;
-	// 	else
-	// 		args[i - 1] = token;
-	// 	i++;
-	// }
+	// 1. Break the command into words
+	for (token = strtok_r(file_name_and_arg, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr))
+	{
+		argv[argc] = token;
+		total_bytes += (strlen(token) + 1); // 널 문자 포함해서 바이트 수 세기
+		argc++;
+	}
 
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create();
@@ -378,7 +383,7 @@ static bool load(const char *file_name_and_arg, struct intr_frame *if_)
 	process_activate(thread_current());
 
 	/* Open executable file. */
-	file = filesys_open(strtok_r(file_name_and_arg, " ", &save_ptr));
+	file = filesys_open(argv[0]);
 	if (file == NULL)
 	{
 		printf("load: %s: open failed\n", file_name);
@@ -458,10 +463,54 @@ static bool load(const char *file_name_and_arg, struct intr_frame *if_)
 	/* Start address. */
 	if_->rip = ehdr.e_entry;
 
-	/* TODO: Your code goes here.
-	 * TODO: Implement argument passing (see project2/argument_passing.html). */
-	// asm volatile("pushq %0, %%rax" ::"r"(args[0]));
-	printf("👀 여기!\n");
+	// argv 문자열 길이만큼 rsp를 내려서 스택 영역 확장
+	if_->rsp -= ROUND_UP(total_bytes, 8);
+
+	// 데이터를 쓰기 시작하는 지점
+	destination = (void *)(USER_STACK);
+
+	// 스택에 argv 작성
+	for (int i = (argc - 1); i >= 0; i--)
+	{
+		destination -= (strlen(argv[i]) + 1);
+		memcpy(destination, argv[i], strlen(argv[i]) + 1);
+		stack_addr[i] = destination;
+	}
+
+	// word-align 고려해서 destination 재조정
+	memset(if_->rsp, 0, destination - if_->rsp);
+	destination = if_->rsp;
+
+	// (argc + 2) * 8 byte만큼 rsp를 감소시켜서 스택 영역 확장
+	if_->rsp -= 8 * (argc + 1);
+
+	// argv[argc] ~ argv[0]의 주소를 스택에 작성
+	for (int i = argc; i >= 0; i--)
+	{
+		destination -= 8;
+		if (i == argc)
+		{
+			memset(destination, 0, 8);
+		}
+	else
+		{
+			__asm __volatile(
+				/* Fetch input once */
+				"movq %0, %%rax\n"
+				"movq %1, %%rcx\n"
+				"movq %%rcx, (%%rax)\n"
+				: : "r"(destination), "r"(stack_addr[i]) : "memory");
+		}
+	}
+
+	// 4. Point %rsi to argv (the address of argv[0]) and set %rdi to argc.
+	if_->R.rsi = (uint64_t)if_->rsp;
+	if_->R.rdi = argc;
+
+	// fake return address를 스택에 푸시
+	if_->rsp -= 8;
+	destination -= 8;
+	memset(destination, 0, 8);
 
 	success = true;
 
@@ -470,37 +519,6 @@ done:
 	file_close(file);
 	return success;
 }
-
-/* Use iretq to launch the thread */
-// void pass_argument(struct intr_frame *tf)
-// {
-
-// 	memcpy();
-// 	asm volatile("subq %0, %%rax" ::"r"(user_addr));
-// 	__asm __volatile(
-// 		"movq %0, %%rsp\n"
-// 		"movq 0(%%rsp),%%r15\n"
-// 		"movq 8(%%rsp),%%r14\n"
-// 		"movq 16(%%rsp),%%r13\n"
-// 		"movq 24(%%rsp),%%r12\n"
-// 		"movq 32(%%rsp),%%r11\n"
-// 		"movq 40(%%rsp),%%r10\n"
-// 		"movq 48(%%rsp),%%r9\n"
-// 		"movq 56(%%rsp),%%r8\n"
-// 		"movq 64(%%rsp),%%rsi\n"
-// 		"movq 72(%%rsp),%%rdi\n"
-// 		"movq 80(%%rsp),%%rbp\n"
-// 		"movq 88(%%rsp),%%rdx\n"
-// 		"movq 96(%%rsp),%%rcx\n"
-// 		"movq 104(%%rsp),%%rbx\n"
-// 		"movq 112(%%rsp),%%rax\n"
-// 		"addq $120,%%rsp\n"
-// 		"movw 8(%%rsp),%%ds\n"
-// 		"movw (%%rsp),%%es\n"
-// 		"addq $32, %%rsp\n"
-// 		"iretq"
-// 		: : "g"((uint64_t)tf) : "memory");
-// }
 
 /* Checks whether PHDR describes a valid, loadable segment in
  * FILE and returns true if so, false otherwise. */
