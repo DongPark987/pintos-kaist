@@ -108,10 +108,12 @@ struct thread
 	/* recent_cpu */
 	int recent_cpu;
 
-#ifdef USERPROG
+// #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4; /* Page map level 4 */
-#endif
+	struct file **fdt;
+	uint8_t fd_cnt;
+// #endif
 #ifdef VM
   /* Table for whole virtual memory owned by thread. */
   struct supplemental_page_table spt;

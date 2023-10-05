@@ -57,6 +57,12 @@ filesys_done (void) {
  * Returns true if successful, false otherwise.
  * Fails if a file named NAME already exists,
  * or if internal memory allocation fails. */
+
+/* 주어진 초기 크기로 이름이 NAME인 파일을 생성합니다.
+성공하면 true를 반환하고, 그렇지 않으면 false를 반환합니다.
+NAME으로 된 파일이 이미 존재하거나,
+내부 메모리 할당에 실패하면 실패합니다. */
+
 bool
 filesys_create (const char *name, off_t initial_size) {
 	disk_sector_t inode_sector = 0;

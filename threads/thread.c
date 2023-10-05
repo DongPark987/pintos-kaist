@@ -438,6 +438,13 @@ void thread_yield(void)
 	struct thread *curr = thread_current();
 	enum intr_level old_level;
 
+	// if (!thread_mlfqs && !list_empty(&ready_list))
+	// {
+	// 	struct thread *t = list_entry(list_front(&ready_list), struct thread, elem);
+	// 	if (thread_current()->priority >= thread_get_priority_manual(t));
+	// 		return;
+	// }
+
 	ASSERT(!intr_context());
 
 	old_level = intr_disable();

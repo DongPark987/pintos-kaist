@@ -61,6 +61,12 @@ pdpe_walk (uint64_t *pdpe, const uint64_t va, int create) {
  * on CREATE.  If CREATE is true, then a new page table is
  * created and a pointer into it is returned.  Otherwise, a null
  * pointer is returned. */
+
+/* 가상 주소 VADDR에 대한 페이지 맵 레벨 4, 즉 pml4의 페이지 테이블 엔트리 주소를 반환합니다.
+ * 만약 PML4E가 VADDR에 대한 페이지 테이블을 가지고 있지 않다면, 동작은 CREATE에 따라 달라집니다.
+ * CREATE가 true인 경우 새로운 페이지 테이블이 생성되고 그에 대한 포인터가 반환됩니다.
+ * 그렇지 않으면 null 포인터가 반환됩니다. */
+
 uint64_t *
 pml4e_walk (uint64_t *pml4e, const uint64_t va, int create) {
 	uint64_t *pte = NULL;
@@ -92,6 +98,10 @@ pml4e_walk (uint64_t *pml4e, const uint64_t va, int create) {
  * virtual addresses, but none for user virtual addresses.
  * Returns the new page directory, or a null pointer if memory
  * allocation fails. */
+
+/* 새로운 페이지 맵 레벨 4 (pml4)를 생성합니다. 이 pml4는 커널 가상 주소에 대한 매핑을 가지지만
+ * 사용자 가상 주소에 대한 매핑은 가지지 않습니다.
+ * 새 페이지 디렉토리를 반환하거나 메모리 할당에 실패한 경우 null 포인터를 반환합니다. */
 uint64_t *
 pml4_create (void) {
 	uint64_t *pml4 = palloc_get_page (0);
@@ -210,6 +220,9 @@ pml4_activate (uint64_t *pml4) {
  * address UADDR in pml4.  Returns the kernel virtual address
  * corresponding to that physical address, or a null pointer if
  * UADDR is unmapped. */
+/* pml4에서 사용자 가상 주소 UADDR에 해당하는 물리 주소를 찾습니다.
+ * 해당 물리 주소에 대응하는 커널 가상 주소를 반환하거나, UADDR이 매핑되지 않았을 경우
+ * null 포인터를 반환합니다. */
 void *
 pml4_get_page (uint64_t *pml4, const void *uaddr) {
 	ASSERT (is_user_vaddr (uaddr));
@@ -292,6 +305,10 @@ pml4_set_dirty (uint64_t *pml4, const void *vpage, bool dirty) {
  * accessed recently, that is, between the time the PTE was
  * installed and the last time it was cleared.  Returns false if
  * PML4 contains no PTE for VPAGE. */
+/* PML4 내의 가상 페이지 VPAGE에 대한 페이지 테이블 엔트리(PTE)가
+ * 최근에 접근되었는지 여부를 반환합니다. 즉, PTE가 설치된 시간부터
+ * 마지막으로 지워질 때까지의 기간 동안 접근된 경우 true를 반환합니다.
+ * 만약 PML4에 VPAGE에 대한 PTE가 없다면 false를 반환합니다. */
 bool
 pml4_is_accessed (uint64_t *pml4, const void *vpage) {
 	uint64_t *pte = pml4e_walk (pml4, (uint64_t) vpage, false);
