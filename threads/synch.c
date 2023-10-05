@@ -156,7 +156,7 @@ bool cmp_priority_max(const struct list_elem *a_, const struct list_elem *b_, vo
 void sema_up(struct semaphore *sema)
 {
    enum intr_level old_level;
-   struct thread *max_t;
+   struct thread *max_t = NULL;
    struct thread *curr = thread_current();
    struct list_elem *max_elem;
 
@@ -174,7 +174,7 @@ void sema_up(struct semaphore *sema)
 
    sema->value++;
 
-   if (!intr_context() && thread_get_priority() > thread_get_priority_manual(max_t))
+   if (max_t != NULL && !intr_context() && thread_get_priority() < thread_get_priority_manual(max_t))
       thread_yield();
 
    intr_set_level(old_level);
