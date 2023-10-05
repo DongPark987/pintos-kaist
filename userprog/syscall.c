@@ -67,6 +67,7 @@ void syscall_handler(struct intr_frame *f UNUSED)
   case SYS_REMOVE:
     break;
   case SYS_OPEN:
+    f->R.rax = open(f->R.rdi);
     break;
   case SYS_FILESIZE:
     break;
@@ -106,4 +107,30 @@ bool create(const char *file, unsigned initial_size)
     exit(-1);
   else
     return filesys_create(file, initial_size);
+}
+
+/*
+Opens the file called file.
+Returns a nonnegative integer handle called a "file descriptor" (fd), or -1 if the file could not be opened.
+File descriptors numbered 0 and 1 are reserved for the console
+: fd 0 (STDIN_FILENO) is standard input, fd 1 (STDOUT_FILENO) is standard output.
+The open system call will never return either of these file descriptors,
+which are valid as system call arguments only as explicitly described below.
+
+Each process has an independent set of file descriptors.
+File descriptors are inherited by child processes.
+When a single file is opened more than once, whether by a single process or different processes, each open returns a new file descriptor.
+Different file descriptors for a single file are closed independently in separate calls to close and they do not share a file position.
+You should follow the linux scheme, which returns integer starting from zero, to do the extra.
+*/
+int open(const char *file)
+{
+  if (file == NULL)
+    exit(-1);
+  struct file *opened_file = filesys_open(file);
+  if (opened_file == NULL)
+    return -1;
+  *thread_current()->fdt = filesys_open(file);
+  thread_current()->fd_cnt++;
+  return thread_current()->fd_cnt;
 }

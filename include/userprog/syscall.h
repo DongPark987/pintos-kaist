@@ -9,5 +9,6 @@ void syscall_init(void);
 void halt(void);
 void exit(int status);
 bool create(const char *file, unsigned initial_size);
+int open (const char *file);
 
 #endif /* userprog/syscall.h */

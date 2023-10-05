@@ -243,8 +243,8 @@ void process_exit(void)
 	struct thread *curr = thread_current();
 	if (is_kernel_vaddr(curr->pml4)){
 		printf("%s: exit(%d)\n", curr->name, curr->tf.R.rdi);
-		palloc_free_page(curr->fdt);
 	}
+	palloc_free_page(curr->fdt);
 	process_cleanup();
 }
 
