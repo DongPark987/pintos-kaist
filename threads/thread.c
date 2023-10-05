@@ -194,12 +194,12 @@ void thread_tick(void)
 {
 	struct thread *t = thread_current();
 
-  /* Update statistics. */
-  if (t == idle_thread)
-    idle_ticks++;
+	/* Update statistics. */
+	if (t == idle_thread)
+		idle_ticks++;
 #ifdef USERPROG
-  else if (t->pml4 != NULL)
-    user_ticks++;
+	else if (t->pml4 != NULL)
+		user_ticks++;
 #endif
 	else
 		kernel_ticks++;
@@ -498,9 +498,9 @@ void thread_wake(int64_t ticks)
 
 void thread_relocate_ready(struct thread *t)
 {
-		list_remove(&t->elem);
-		t->status = THREAD_BLOCKED;
-		thread_unblock(t);
+	list_remove(&t->elem);
+	t->status = THREAD_BLOCKED;
+	thread_unblock(t);
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
@@ -685,8 +685,7 @@ init_thread(struct thread *t, const char *name, int priority)
 		list_push_back(&all_list, &t->all_elem);
 	}
 	t->magic = THREAD_MAGIC;
-	t->holder = NULL;
-	t->holder_lock = NULL;
+	t->wait_on_lock = NULL;
 	t->donation_cnt = 0;
 	for (int i = 0; i < 64; i++)
 		t->donation_list[i] = 0;
@@ -858,8 +857,8 @@ schedule(void)
 	/* Mark us as running. */
 	next->status = THREAD_RUNNING;
 
-  /* Start new time slice. */
-  thread_ticks = 0;
+	/* Start new time slice. */
+	thread_ticks = 0;
 
 #ifdef USERPROG
 	/* Activate the new address space. */
@@ -876,6 +875,7 @@ schedule(void)
 		   currently used by the stack.
 		   The real destruction logic will be called at the beginning of the
 		   schedule().
+
 		   만약 우리가 전환한 스레드가 종료 중이라면, 해당 스레드의 구조체(thread struct)를 파괴합니다.
 		   이 작업은 thread_exit() 함수가 자신을 지원하지 않도록하기 위해 늦게 발생해야 합니다.
 		   여기서는 페이지가 현재 스택에 의해 사용 중이기 때문에 페이지 해제 요청을 대기열에 추가하기만 합니다.
@@ -904,7 +904,7 @@ allocate_tid(void)
 	tid = next_tid++;
 	lock_release(&tid_lock);
 
-  return tid;
+	return tid;
 }
 
 /* recent_cpu 비교 */

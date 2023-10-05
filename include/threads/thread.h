@@ -97,8 +97,7 @@ struct thread
 	int8_t donation_list[64]; /* 도네이션 리스트 */
 	int donation_cnt;
 
-	struct thread *holder;
-	void *holder_lock;
+	struct lock * wait_on_lock;
 	int nice;
 	int64_t wake_tick;
 	/* Shared between thread.c and synch.c. */

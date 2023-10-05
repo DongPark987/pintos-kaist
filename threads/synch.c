@@ -279,16 +279,14 @@ void lock_acquire(struct lock *lock)
    if (thread_mlfqs)
    {
       sema_down(&lock->semaphore);
-      curr_t->holder = NULL;
-      curr_t->holder_lock = NULL;
+      curr_t->wait_on_lock = NULL;
       lock->holder = curr_t;
       return;
    }
 
    if (lock->holder != NULL)
    {
-      curr_t->holder_lock = lock;
-      curr_t->holder = lock->holder;
+      curr_t->wait_on_lock = lock;
 
       int curr_priority = thread_get_priority();
       struct lock *next_lock = lock;
@@ -302,12 +300,11 @@ void lock_acquire(struct lock *lock)
             if (next_lock->holder->status == THREAD_READY)
                thread_relocate_ready(next_lock->holder);
          }
-         next_lock = next_lock->holder->holder_lock;
+         next_lock = next_lock->holder->wait_on_lock;
       }
    }
    sema_down(&lock->semaphore);
-   curr_t->holder = NULL;
-   curr_t->holder_lock = NULL;
+   curr_t->wait_on_lock = NULL;
    lock->holder = curr_t;
    if (!list_empty(&lock->semaphore.waiters))
    {
