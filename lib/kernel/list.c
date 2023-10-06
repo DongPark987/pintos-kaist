@@ -446,3 +446,28 @@ struct list_elem *list_min(struct list *list, list_less_func *less, void *aux) {
   }
   return min;
 }
+
+// * find elem in list
+struct list_elem *list_find(struct list *list, struct list_elem *tar) {
+  if (list_empty(list)) return NULL;
+
+  struct list_elem *curr;
+  for (curr = list_begin(list); curr != list_end(list);
+       curr = list_next(curr)) {
+    if (curr == tar) {
+      return curr;
+    }
+  }
+  return NULL;
+}
+
+// * 리스트를 돌면서 함수를 수행합니다.
+void list_iterate(struct list *list, list_iterate_func function, void *aux) {
+  if (list_empty(list)) return;
+
+  struct list_elem *curr;
+  for (curr = list_begin(list); curr != list_end(list);
+       curr = list_next(curr)) {
+    function(curr, aux);
+  }
+}

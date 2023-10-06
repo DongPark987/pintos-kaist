@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -40,6 +41,19 @@ typedef int tid_t;
 #define fix_div_fix(x, y) (((int64_t)x) * F / y)  // to get (x/y) * f
 #define fix_add_int(x, n) (x + n * F)             // x + n
 #define fix_sub_int(x, n) (x - n * F)             // x - n
+
+/* Max file descriptor */
+#define MAX_FD 128
+#define MIN_FD 2
+#define STDIN_FILENO 0
+#define STDOUT_FILENO 1
+
+/* Terminated children list. */
+struct thread_child {
+  tid_t tid;
+  uint64_t rtn;
+  struct list_elem elem;
+};
 
 /* A kernel thread or user process.
  *
@@ -117,10 +131,18 @@ struct thread {
 
   uint64_t wake_tick; /* Wake Tick */
 
-#ifdef USERPROG
+  // #ifdef USERPROG
   /* Owned by userprog/process.c. */
-  uint64_t *pml4; /* Page map level 4 */
-#endif
+  uint64_t *pml4;    /* Page map level 4 */
+  uint8_t fd_cnt;    /* Used file descriptor */
+  struct file **fdt; /* File descriptor table */
+
+  struct thread *parent;
+  struct list exit_children;
+  //   struct list wait_children;
+  struct semaphore fork_sema; /* Used for process fork */
+  struct semaphore wait_sema; /* Used for process fork */
+// #endif
 #ifdef VM
   /* Table for whole virtual memory owned by thread. */
   struct supplemental_page_table spt;
@@ -187,12 +209,6 @@ bool high_sema(struct list_elem *, struct list_elem *, void *);
 bool less_recent(struct list_elem *, struct list_elem *, void *);
 
 void do_iret(struct intr_frame *tf);
-
-/* list functions */
-typedef void list_iterate_func(struct list_elem *, void *);
-
-void list_iterate(struct list *, list_iterate_func, void *);
-struct list_elem *list_find(struct list *, struct list_elem *);
 
 /* iterate */
 void iterate_recent_cpu(struct list_elem *, void *);

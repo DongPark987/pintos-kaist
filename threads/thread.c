@@ -343,18 +343,6 @@ void thread_incr_recent_cpu(void) {
   }
 }
 
-// * 리스트를 돌면서 함수를 수행합니다.
-// TODO list.c로 옮기기
-void list_iterate(struct list *list, list_iterate_func function, void *aux) {
-  if (list_empty(list)) return;
-
-  struct list_elem *curr;
-  for (curr = list_begin(list); curr != list_end(list);
-       curr = list_next(curr)) {
-    function(curr, aux);
-  }
-}
-
 // * iterate 인자로 전달할 내부 함수
 // TODO iterate 함수는 모으자
 void iterate_recent_cpu(struct list_elem *elem, void *aux UNUSED) {
@@ -372,21 +360,6 @@ void thread_set_recent_cpu(void) {
 void set_recent_cpu(struct thread *t) {
   int coeff = fix_div_fix((2 * load_avg), fix_add_int((2 * load_avg), 1));
   t->recent_cpu = fix_add_int(fix_mul_fix(coeff, t->recent_cpu), t->nice);
-}
-
-// * find elem in list
-// TODO: list.c로 옮기기
-struct list_elem *list_find(struct list *list, struct list_elem *tar) {
-  if (list_empty(list)) return NULL;
-
-  struct list_elem *curr;
-  for (curr = list_begin(list); curr != list_end(list);
-       curr = list_next(curr)) {
-    if (curr == tar) {
-      return curr;
-    }
-  }
-  return NULL;
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
@@ -457,10 +430,7 @@ void thread_set_nice(int nice) {
 }
 
 /* Returns the current thread's nice value. */
-int thread_get_nice(void) {
-  /* TODO: Your implementation goes here */
-  return thread_current()->nice;
-}
+int thread_get_nice(void) { return thread_current()->nice; }
 
 void thread_set_load_avg(void) {
   // load_avg는 고정 소수점 형식
@@ -551,6 +521,13 @@ static void init_thread(struct thread *t, const char *name, int priority) {
 
   /* 우선순위 설정 */
   t->priority = thread_mlfqs ? calc_priority(t) : priority;
+
+  /* for user process */
+  t->parent = t == initial_thread ? NULL : thread_current();
+  //   list_init(&t->wait_children);
+  list_init(&t->exit_children);
+  sema_init(&t->fork_sema, 0);
+  sema_init(&t->wait_sema, 0);
 }
 
 // * 다음으로 실행될 스레드
