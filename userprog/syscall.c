@@ -11,6 +11,7 @@
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "userprog/exception.h"
+#include "devices/input.h"
 #include <string.h>
 
 void syscall_entry(void);
@@ -70,15 +71,19 @@ void syscall_handler(struct intr_frame *f UNUSED)
     f->R.rax = open(f->R.rdi);
     break;
   case SYS_FILESIZE:
+    f->R.rax = filesize(f->R.rdi);
     break;
   case SYS_READ:
+    f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
     break;
   case SYS_WRITE:
     printf("%s", f->R.rsi);
     break;
   case SYS_SEEK:
+    seek(f->R.rdi, f->R.rsi);
     break;
   case SYS_TELL:
+    f->R.rax = tell(f->R.rdi);
     break;
   case SYS_CLOSE:
     close(f->R.rdi);
@@ -90,26 +95,26 @@ void syscall_handler(struct intr_frame *f UNUSED)
 }
 
 /*
-Terminates Pintos by calling power_off() (declared in src/include/threads/init.h). 
+Terminates Pintos by calling power_off() (declared in src/include/threads/init.h).
 This should be seldom used, because you lose some information about possible deadlock situations, etc.
 */
 void halt(void)
 {
   // Terminating a process implicitly closes all its open file descriptors
-  for (int fd = 0; fd <= thread_current()->fd_cnt; fd++)
+  for (int fd = 0; fd < thread_current()->fd_cnt; fd++)
     close(fd);
   power_off();
 }
 
 /*
-Terminates the current user program, returning status to the kernel. 
-If the process's parent waits for it (see below), this is the status that will be returned. 
+Terminates the current user program, returning status to the kernel.
+If the process's parent waits for it (see below), this is the status that will be returned.
 Conventionally, a status of 0 indicates success and nonzero values indicate errors.
 */
 void exit(int status)
 {
   // Exiting a process implicitly closes all its open file descriptors
-  for (int fd = 0; fd <= thread_current()->fd_cnt; fd++)
+  for (int fd = 0; fd < thread_current()->fd_cnt; fd++)
     close(fd);
 
   thread_current()->tf.R.rdi = status;
@@ -117,9 +122,9 @@ void exit(int status)
 }
 
 /*
-Creates a new file called file initially initial_size bytes in size. 
-Returns true if successful, false otherwise. 
-Creating a new file does not open it: 
+Creates a new file called file initially initial_size bytes in size.
+Returns true if successful, false otherwise.
+Creating a new file does not open it:
 opening the new file is a separate operation which would require a open system call.
 */
 bool create(const char *file, unsigned initial_size)
@@ -153,17 +158,70 @@ int open(const char *file)
   struct file *opened_file = filesys_open(file);
   if (opened_file == NULL)
     return -1;
-  *thread_current()->fdt = filesys_open(file);
   thread_current()->fd_cnt++;
+  thread_current()->fdt[thread_current()->fd_cnt] = opened_file;
+
   return thread_current()->fd_cnt;
 }
 
 /*
-Closes file descriptor fd. 
-Exiting or terminating a process implicitly closes all its open file descriptors, 
+Closes file descriptor fd.
+Exiting or terminating a process implicitly closes all its open file descriptors,
 as if by calling this function for each one.
 */
-void close (int fd)
+void close(int fd)
 {
-  file_close(thread_current()->fdt[fd]);
+  if (thread_current()->fdt[fd] != NULL)
+  {
+    file_close(thread_current()->fdt[fd]);
+    thread_current()->fdt[fd] = NULL;
+    thread_current()->fd_cnt--;
+  }
+}
+
+/*
+Reads size bytes from the file open as fd into buffer.
+Returns the number of bytes actually read (0 at end of file),
+or -1 if the file could not be read (due to a condition other than end of file).
+fd 0 reads from the keyboard using input_getc().
+*/
+int read(int fd, void *buffer, unsigned size)
+{
+  if (fd < 0 || fd > thread_current()->fd_cnt)
+    exit(-1);
+
+  if (fd == 0)
+    return input_getc();
+
+  return file_read(thread_current()->fdt[fd], buffer, size);
+}
+
+/*
+Returns the size, in bytes, of the file open as fd.
+*/
+int filesize(int fd)
+{
+  return file_length(thread_current()->fdt[fd]);
+}
+
+/*
+Changes the next byte to be read or written in open file fd to position, expressed in bytes from the beginning of the file 
+(Thus, a position of 0 is the file's start). 
+A seek past the current end of a file is not an error. 
+A later read obtains 0 bytes, indicating end of file. 
+A later write extends the file, filling any unwritten gap with zeros. 
+(However, in Pintos files have a fixed length until project 4 is complete, so writes past end of file will return an error.) 
+These semantics are implemented in the file system and do not require any special effort in system call implementation.
+*/
+void seek(int fd, unsigned position)
+{
+  file_seek(thread_current()->fdt[fd], position);
+}
+
+/*
+Returns the position of the next byte to be read or written in open file fd, expressed in bytes from the beginning of the file.
+*/
+unsigned tell(int fd)
+{
+  return thread_current()->fdt[fd]->pos;
 }
