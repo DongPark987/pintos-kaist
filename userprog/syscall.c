@@ -77,7 +77,7 @@ void syscall_handler(struct intr_frame *f UNUSED)
     f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
     break;
   case SYS_WRITE:
-    printf("%s", f->R.rsi);
+    f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
     break;
   case SYS_SEEK:
     seek(f->R.rdi, f->R.rsi);
@@ -88,7 +88,6 @@ void syscall_handler(struct intr_frame *f UNUSED)
   case SYS_CLOSE:
     close(f->R.rdi);
     break;
-
   default:
     break;
   }
@@ -205,12 +204,12 @@ int filesize(int fd)
 }
 
 /*
-Changes the next byte to be read or written in open file fd to position, expressed in bytes from the beginning of the file 
-(Thus, a position of 0 is the file's start). 
-A seek past the current end of a file is not an error. 
-A later read obtains 0 bytes, indicating end of file. 
-A later write extends the file, filling any unwritten gap with zeros. 
-(However, in Pintos files have a fixed length until project 4 is complete, so writes past end of file will return an error.) 
+Changes the next byte to be read or written in open file fd to position, expressed in bytes from the beginning of the file
+(Thus, a position of 0 is the file's start).
+A seek past the current end of a file is not an error.
+A later read obtains 0 bytes, indicating end of file.
+A later write extends the file, filling any unwritten gap with zeros.
+(However, in Pintos files have a fixed length until project 4 is complete, so writes past end of file will return an error.)
 These semantics are implemented in the file system and do not require any special effort in system call implementation.
 */
 void seek(int fd, unsigned position)
@@ -224,4 +223,15 @@ Returns the position of the next byte to be read or written in open file fd, exp
 unsigned tell(int fd)
 {
   return thread_current()->fdt[fd]->pos;
+}
+
+int write(int fd, const void *buffer, unsigned size)
+{
+  if (fd == 1)
+  {
+    putbuf(buffer, size);
+    return size;
+  }
+
+  return file_write(thread_current()->fdt[fd], buffer, size);
 }
