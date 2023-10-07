@@ -14,7 +14,10 @@ source ../../activate
 # pintos --fs-disk=10 -p tests/userprog/fork-once:fork-once -p ../../tests/userprog/sample.txt:sample.txt -- -q   -f run read-normal
 
 # pintos -v -k -T 60 -m 20 --fs-disk=10 -p tests/userprog/fork-once:fork-once -- -q   -f run fork-once
-pintos -v -k -T 60 -m 20 --fs-disk=10 -p tests/userprog/rox-simple:rox-simple -- -q   -f run rox-simple
+# pintos -v -k -T 60 -m 20 --fs-disk=10 -p tests/userprog/rox-simple:rox-simple -- -q   -f run rox-simple
 # pintos -v -k -T 60 -m 20   --fs-disk=10 -p tests/userprog/fork-read:fork-read -p ../../tests/userprog/sample.txt:sample.txt -- -q   -f run fork-read
 # pintos -v -k -T 60 -m 20   --fs-disk=10 -p tests/userprog/wait-simple:wait-simple -p tests/userprog/child-simple:child-simple -- -q   -f run wait-simple
 # pintos -v -k -T 60 -m 20   --fs-disk=10 -p tests/userprog/exec-once:exec-once -p tests/userprog/child-simple:child-simple -- -q   -f run exec-once
+# pintos -v -k -T 60 -m 20   --fs-disk=10 -p tests/userprog/bad-write:bad-write -p tests/userprog/bad-write:bad-write -- -q   -f run bad-write
+
+pintos --fs-disk=10 -p tests/userprog/bad-write:bad-write -- -q   -f run bad-write
