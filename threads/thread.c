@@ -296,6 +296,7 @@ tid_t thread_create(const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
 
+	t->parent = thread_current();
 	/* Add to run queue. */
 	thread_unblock(t);
 	thread_yield();
@@ -316,7 +317,6 @@ void thread_block(void)
 {
 	ASSERT(!intr_context());
 	ASSERT(intr_get_level() == INTR_OFF);
-
 	/* mlfq */
 	if (thread_current() != idle_thread && thread_mlfqs)
 	{
@@ -412,6 +412,8 @@ void thread_exit(void)
 {
 	ASSERT(!intr_context());
 
+	// 자식 프로세스가 exit하는 경우 부모 프로세스에 자신의 종료값 기록
+	thread_current()->parent->exit_status = thread_current()->tf.R.rdi;
 #ifdef USERPROG
 	process_exit();
 #endif
@@ -425,6 +427,8 @@ void thread_exit(void)
 		list_remove(&thread_current()->all_elem);
 		ready_threads--;
 	}
+
+	sema_up(&thread_current()->parent->wait_sema);
 	do_schedule(THREAD_DYING);
 	NOT_REACHED();
 }
@@ -689,6 +693,9 @@ init_thread(struct thread *t, const char *name, int priority)
 	t->donation_cnt = 0;
 	for (int i = 0; i < 64; i++)
 		t->donation_list[i] = 0;
+
+	sema_init(&t->fork_sema, 0);
+	sema_init(&t->wait_sema, 0);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

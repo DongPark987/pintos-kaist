@@ -17,6 +17,7 @@
 #include "threads/thread.h"
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
+#include "threads/synch.h"
 #include "intrinsic.h"
 #ifdef VM
 #include "vm/vm.h"
@@ -26,6 +27,8 @@ static void process_cleanup(void);
 static bool load(const char *file_name, struct intr_frame *if_);
 static void initd(void *f_name);
 static void __do_fork(void *);
+
+static struct intr_frame global_if;
 
 /* General process initializer for initd and other process. */
 static void process_init(void)
@@ -56,7 +59,7 @@ tid_t process_create_initd(const char *file_name)
 
 	/* Create a new thread to execute FILE_NAME. */
 	strtok_r(file_name, " ", &save_ptr);
-	tid = thread_create(file_name, PRI_DEFAULT + 1, initd, fn_copy);
+	tid = thread_create(file_name, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
 		palloc_free_page(fn_copy);
 	return tid;
@@ -81,8 +84,10 @@ static void initd(void *f_name)
 tid_t process_fork(const char *name, struct intr_frame *if_ UNUSED)
 {
 	/* Clone current thread to new thread.*/
-	return thread_create(name,
-						 PRI_DEFAULT, __do_fork, thread_current());
+	memcpy(&global_if, if_, sizeof(struct intr_frame));
+	tid_t tid = thread_create(name, PRI_DEFAULT, __do_fork, thread_current());
+	sema_down(&thread_current()->fork_sema);
+	return tid;
 }
 
 #ifndef VM
@@ -97,22 +102,28 @@ static bool duplicate_pte(uint64_t *pte, void *va, void *aux)
 	bool writable;
 
 	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
+	if (is_kernel_vaddr(va))
+		return true;
 
 	/* 2. Resolve VA from the parent's page map level 4. */
 	parent_page = pml4_get_page(parent->pml4, va);
 
 	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
 	 *    TODO: NEWPAGE. */
+	newpage = palloc_get_page(PAL_USER);
 
 	/* 4. TODO: Duplicate parent's page to the new page and
 	 *    TODO: check whether parent's page is writable or not (set WRITABLE
 	 *    TODO: according to the result). */
+	memcpy(newpage, parent_page, PGSIZE);
+	writable = is_writable(pte);
 
 	/* 5. Add new page to child's page table at address VA with WRITABLE
 	 *    permission. */
 	if (!pml4_set_page(current->pml4, va, newpage, writable))
 	{
 		/* 6. TODO: if fail to insert page, do error handling. */
+		return TID_ERROR;
 	}
 	return true;
 }
@@ -127,8 +138,7 @@ static void __do_fork(void *aux)
 	struct intr_frame if_;
 	struct thread *parent = (struct thread *)aux;
 	struct thread *current = thread_current();
-	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
-	struct intr_frame *parent_if;
+	struct intr_frame *parent_if = &global_if; // process_fork()'s if_
 	bool succ = true;
 
 	/* 1. Read the cpu context to local stack. */
@@ -138,6 +148,9 @@ static void __do_fork(void *aux)
 	current->pml4 = pml4_create();
 	if (current->pml4 == NULL)
 		goto error;
+
+	/* 부모 스레드에는 자식 스레드의 pid, 자식 스레드에는 0 셋팅 */
+	if_.R.rax = 0;
 
 	process_activate(current);
 #ifdef VM
@@ -154,12 +167,21 @@ static void __do_fork(void *aux)
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
-
 	process_init();
+
+	for (int i = 0; i <= MAX_FD; i++)
+	{
+		if (parent->fdt[i] != NULL)
+			current->fdt[i] = file_duplicate(parent->fdt[i]);
+	}
+	current->fd_cnt = parent->fd_cnt;
 
 	/* Finally, switch to the newly created process. */
 	if (succ)
+	{
+		sema_up(&parent->fork_sema);
 		do_iret(&if_);
+	}
 error:
 	thread_exit();
 }
@@ -234,14 +256,18 @@ int process_wait(tid_t child_tid UNUSED)
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	return -1;
+	// 부모는 자식 프로세스가 exit할 때까지 block
+	sema_down(&thread_current()->wait_sema);
+	// 자식 프로세스의 자원을 반환하고, 자식 프로세스의 리턴값 반환
+	return thread_current()->exit_status;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
 void process_exit(void)
 {
 	struct thread *curr = thread_current();
-	if (is_kernel_vaddr(curr->pml4)){
+	if (is_kernel_vaddr(curr->pml4))
+	{
 		printf("%s: exit(%d)\n", curr->name, curr->tf.R.rdi);
 	}
 	palloc_free_page(curr->fdt);
@@ -281,7 +307,7 @@ static void process_cleanup(void)
 void process_activate(struct thread *next)
 {
 	/* Activate thread's page tables. */
-	pml4_activate(next->pml4); // my TODO: 여기에서 NULL이 전달됨
+	pml4_activate(next->pml4);
 
 	/* Set thread's kernel stack for use in processing interrupts. */
 	tss_update(next);

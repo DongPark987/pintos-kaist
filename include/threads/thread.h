@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -96,11 +97,10 @@ struct thread
 	char name[16];			   /* Name (for debugging purposes). */
 	int priority;			   /* Priority. */
 
-	
 	int8_t donation_list[64]; /* 도네이션 리스트 */
 	int donation_cnt;
 
-	struct lock * wait_on_lock;
+	struct lock *wait_on_lock;
 	int nice;
 	int64_t wake_tick;
 	/* Shared between thread.c and synch.c. */
@@ -111,16 +111,21 @@ struct thread
 	/* recent_cpu */
 	int recent_cpu;
 
-	struct file** fdt;
+	struct file **fdt;
 	uint8_t fd_cnt;
+
+	struct semaphore fork_sema;
+	struct semaphore wait_sema;
+	void *exit_status;		// 자식 프로세스가 exit하면서 return한 값
+	struct thread *parent; // 부모 프로세스의 elem
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4; /* Page map level 4 (페이지 디렉터리 포인터 테이블의 위치를 나타냄. 가상 메모리 주소와 물리 메모리 주소 간의 매핑을 조직화함) */
 #endif
 #ifdef VM
-  /* Table for whole virtual memory owned by thread. */
-  struct supplemental_page_table spt;
+	/* Table for whole virtual memory owned by thread. */
+	struct supplemental_page_table spt;
 #endif
 
 	/* Owned by thread.c. */
@@ -169,7 +174,6 @@ void do_iret(struct intr_frame *tf);
 bool cmp_wake_tick(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 void thread_sleep(int64_t ticks);
 void thread_wake(int64_t ticks);
-
 
 /*
 	priority

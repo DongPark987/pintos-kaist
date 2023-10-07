@@ -6,6 +6,7 @@
 #include "threads/thread.h"
 #include "threads/loader.h"
 #include "userprog/gdt.h"
+#include "userprog/process.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
 #include "filesys/file.h"
@@ -57,10 +58,12 @@ void syscall_handler(struct intr_frame *f UNUSED)
     exit(f->R.rdi);
     break;
   case SYS_FORK:
+    f->R.rax = sys_fork(f);
     break;
   case SYS_EXEC:
     break;
   case SYS_WAIT:
+    f->R.rax = wait(f->R.rdi);
     break;
   case SYS_CREATE:
     f->R.rax = create(f->R.rdi, f->R.rsi);
@@ -225,6 +228,10 @@ unsigned tell(int fd)
   return thread_current()->fdt[fd]->pos;
 }
 
+/*
+Writes size bytes from buffer to the open file fd.
+Returns the number of bytes actually written, which may be less than size if some bytes could not be written.
+*/
 int write(int fd, const void *buffer, unsigned size)
 {
   if (fd == 1)
@@ -234,4 +241,39 @@ int write(int fd, const void *buffer, unsigned size)
   }
 
   return file_write(thread_current()->fdt[fd], buffer, size);
+}
+
+/*
+Create new process which is the clone of current process with the name THREAD_NAME.
+You don't need to clone the value of the registers except %RBX, %RSP, %RBP, and %R12 - %R15, which are callee-saved registers.
+Must return pid of the child process, otherwise shouldn't be a valid pid.
+In child process, the return value should be 0.
+The child should have DUPLICATED resources including file descriptor and virtual memory space.
+Parent process should never return from the fork until it knows whether the child process successfully cloned.
+That is, if the child process fail to duplicate the resource, the fork () call of parent should return the TID_ERROR.
+
+The template utilizes the pml4_for_each() in threads/mmu.c to copy entire user memory space, including corresponding pagetable structures,
+but you need to fill missing parts of passed pte_for_each_func
+
+*/
+// pid_t fork(const char *thread_name)
+pid_t sys_fork(struct intr_frame *f)
+{
+  return process_fork(f->R.rdi, f);
+}
+
+/*
+
+Waits for a child process pid and retrieves the child's exit status.
+If pid is still alive, waits until it terminates.
+Then, returns the status that pid passed to exit.
+If pid did not call exit(), but was terminated by the kernel (e.g. killed due to an exception), wait(pid) must return -1.
+It is perfectly legal for a parent process to wait for child processes that have already terminated by the time the parent calls wait,
+but the kernel must still allow the parent to retrieve its child’s exit status, or learn that the child was terminated by the kernel.
+
+wait must fail and return -1 immediately if any of the following conditions is true:
+*/
+int wait(pid_t pid)
+{
+  return process_wait(pid);
 }
