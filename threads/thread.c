@@ -10,6 +10,7 @@
 #include "threads/palloc.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/malloc.h"
 #include "intrinsic.h"
 #ifdef USERPROG
 #include "userprog/process.h"
@@ -296,7 +297,17 @@ tid_t thread_create(const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
 
-	t->parent = thread_current();
+	struct thread *curr = thread_current();
+
+	// create되는 스레드의 부모로 현재 스레드 지정
+	t->parent = curr;
+
+	// 현재 스레드의 자식으로 create되는 스레드를 추가
+	struct child_process *new_process = malloc(sizeof(struct child_process));
+	new_process->tid = t->tid;
+	new_process->status = PROCESS_FORKED;
+	list_push_back(&curr->children, &new_process->elem);
+
 	/* Add to run queue. */
 	thread_unblock(t);
 	thread_yield();
@@ -413,7 +424,30 @@ void thread_exit(void)
 	ASSERT(!intr_context());
 
 	// 자식 프로세스가 exit하는 경우 부모 프로세스에 자신의 종료값 기록
-	thread_current()->parent->exit_status = thread_current()->tf.R.rdi;
+	struct thread *curr = thread_current();
+
+	// 부모의 children 리스트에서 자신의 것 찾기
+	if (curr->parent != NULL)
+	{
+		struct list_elem *e;
+		struct child_process *found = NULL;
+		for (e = list_begin(&curr->parent->children); e != list_end(&curr->parent->children); e = list_next(e))
+		{
+			struct child_process *child = list_entry(e, struct child_process, elem);
+			if (child->tid == curr->tid)
+			{
+				found = child;
+				break;
+			}
+		}
+
+		if (found != NULL)
+		{
+			found->status = PROCESS_EXIT;
+			found->return_value = curr->tf.R.rdi;
+		}
+	}
+
 #ifdef USERPROG
 	process_exit();
 #endif
@@ -428,7 +462,6 @@ void thread_exit(void)
 		ready_threads--;
 	}
 
-	sema_up(&thread_current()->parent->wait_sema);
 	do_schedule(THREAD_DYING);
 	NOT_REACHED();
 }
@@ -696,6 +729,7 @@ init_thread(struct thread *t, const char *name, int priority)
 
 	sema_init(&t->fork_sema, 0);
 	sema_init(&t->wait_sema, 0);
+	list_init(&t->children);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

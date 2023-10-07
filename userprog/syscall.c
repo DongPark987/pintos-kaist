@@ -61,6 +61,7 @@ void syscall_handler(struct intr_frame *f UNUSED)
     f->R.rax = sys_fork(f);
     break;
   case SYS_EXEC:
+    f->R.rax = exec(f->R.rdi);
     break;
   case SYS_WAIT:
     f->R.rax = wait(f->R.rdi);
@@ -115,9 +116,11 @@ Conventionally, a status of 0 indicates success and nonzero values indicate erro
 */
 void exit(int status)
 {
-  // Exiting a process implicitly closes all its open file descriptors
-  for (int fd = 0; fd < thread_current()->fd_cnt; fd++)
-    close(fd);
+  // TODO: Exiting a process implicitly closes all its open file descriptors
+  // for (int fd = 0; fd < MAX_FD; fd++)
+  // {
+  //     close(fd);
+  // }
 
   thread_current()->tf.R.rdi = status;
   thread_exit();
@@ -189,7 +192,7 @@ fd 0 reads from the keyboard using input_getc().
 */
 int read(int fd, void *buffer, unsigned size)
 {
-  if (fd < 0 || fd > thread_current()->fd_cnt)
+  if (fd < 0 || fd > MAX_FD)
     exit(-1);
 
   if (fd == 0)
@@ -276,4 +279,9 @@ wait must fail and return -1 immediately if any of the following conditions is t
 int wait(pid_t pid)
 {
   return process_wait(pid);
+}
+
+int exec(const char *cmd_line)
+{
+  return process_exec(cmd_line);
 }

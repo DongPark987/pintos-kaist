@@ -215,7 +215,14 @@ You can find more about it by looking at the man page (run man strtok_r at the p
 */
 int process_exec(void *f_name)
 {
+
 	char *file_name = f_name;
+
+	file_name = palloc_get_page(0);
+	if (file_name == NULL)
+		return TID_ERROR;
+	strlcpy(file_name, f_name, PGSIZE);
+
 	bool success;
 
 	/* We cannot use the intr_frame in the thread structure.
@@ -256,10 +263,39 @@ int process_wait(tid_t child_tid UNUSED)
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	// 부모는 자식 프로세스가 exit할 때까지 block
-	sema_down(&thread_current()->wait_sema);
+	struct thread *curr = thread_current();
+
 	// 자식 프로세스의 자원을 반환하고, 자식 프로세스의 리턴값 반환
-	return thread_current()->exit_status;
+	struct list_elem *e;
+	struct child_process *found = NULL;
+	int return_value;
+	for (e = list_begin(&curr->children); e != list_end(&curr->children); e = list_next(e))
+	{
+		struct child_process *child = list_entry(e, struct child_process, elem);
+		if (child->tid == child_tid)
+		{
+			found = child;
+			break;
+		}
+	}
+
+	// child_tid에 해당되는 자식 프로세스가 없거나, 이미 wait 요청을 보낸 프로세스라면 -1 리턴
+	if (found == NULL || found->status == PROCESS_RUNNING)
+		return -1;
+
+	found->status = PROCESS_RUNNING;
+
+	// 부모는 자식 프로세스가 exit할 때까지 block
+	sema_down(&curr->wait_sema);
+
+	if (found != NULL)
+	{
+		return_value = found->return_value;
+		list_remove(&found->elem);
+		free(found);
+	}
+
+	return return_value;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
@@ -272,6 +308,8 @@ void process_exit(void)
 	}
 	palloc_free_page(curr->fdt);
 	process_cleanup();
+	if (&curr->parent != NULL)
+		sema_up(&curr->parent->wait_sema);
 }
 
 /* Free the current process's resources. */

@@ -19,6 +19,13 @@ enum thread_status
 	THREAD_DYING	/* About to be destroyed. */
 };
 
+enum process_status
+{
+	PROCESS_FORKED,
+	PROCESS_RUNNING,
+	PROCESS_EXIT
+};
+
 /* Thread identifier type.
    You can redefine this to whatever type you like. */
 typedef int tid_t;
@@ -89,6 +96,14 @@ typedef int tid_t;
  * only because they are mutually exclusive: only a thread in the
  * ready state is on the run queue, whereas only a thread in the
  * blocked state is on a semaphore wait list. */
+
+struct child_process {
+	tid_t tid;
+	struct list_elem elem;
+	enum process_status status;
+	int return_value;
+};
+
 struct thread
 {
 	/* Owned by thread.c. */
@@ -116,8 +131,9 @@ struct thread
 
 	struct semaphore fork_sema;
 	struct semaphore wait_sema;
-	void *exit_status;		// 자식 프로세스가 exit하면서 return한 값
-	struct thread *parent; // 부모 프로세스의 elem
+	struct thread *parent; // 부모 프로세스의 스레드
+	struct list children; // 자식 프로세스
+
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
