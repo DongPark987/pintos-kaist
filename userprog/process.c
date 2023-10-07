@@ -241,7 +241,7 @@ int process_exec(void *f_name)
 
 	/* If load failed, quit. */
 	palloc_free_page(file_name);
-	if (!success)
+	if (!success) 
 		return -1;
 
 	/* Start switched process. */
@@ -441,6 +441,8 @@ static bool load(const char *file_name_and_arg, struct intr_frame *if_)
 		total_bytes += (strlen(token) + 1); // 널 문자 포함해서 바이트 수 세기
 		argc++;
 	}
+
+	file_name = argv[0];
 
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create();

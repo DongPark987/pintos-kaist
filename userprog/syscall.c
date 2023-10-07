@@ -283,5 +283,8 @@ int wait(pid_t pid)
 
 int exec(const char *cmd_line)
 {
-  return process_exec(cmd_line);
+  int result = process_exec(cmd_line);
+  if (result == -1)
+    exit(-1);
+  return result;
 }
