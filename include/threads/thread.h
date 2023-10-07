@@ -126,6 +126,7 @@ struct thread
 	/* recent_cpu */
 	int recent_cpu;
 
+	struct file *exe; // executable
 	struct file **fdt;
 	uint8_t fd_cnt;
 

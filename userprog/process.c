@@ -310,6 +310,7 @@ void process_exit(void)
 	process_cleanup();
 	if (&curr->parent != NULL)
 		sema_up(&curr->parent->wait_sema);
+	file_close(curr->exe);
 }
 
 /* Free the current process's resources. */
@@ -458,6 +459,10 @@ static bool load(const char *file_name_and_arg, struct intr_frame *if_)
 		goto done;
 	}
 
+	/* executabl file을 편집하지 못하도록 하기 */
+	thread_current()->exe = file;
+	file_deny_write(file);
+
 	/* Read and verify executable header. */
 	if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr || memcmp(ehdr.e_ident, "\177ELF\2\1\1", 7) || ehdr.e_type != 2 || ehdr.e_machine != 0x3E // amd64
 		|| ehdr.e_version != 1 || ehdr.e_phentsize != sizeof(struct Phdr) || ehdr.e_phnum > 1024)
@@ -584,7 +589,7 @@ static bool load(const char *file_name_and_arg, struct intr_frame *if_)
 
 done:
 	/* We arrive here whether the load is successful or not. */
-	file_close(file);
+	// file_close(file);
 	return success;
 }
 
