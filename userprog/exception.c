@@ -144,7 +144,7 @@ static void page_fault(struct intr_frame *f) {
 
   /* Handle invalid ptr */
   // TODO: update
-  thread_current()->tf.R.rdi = -1;
+  thread_current()->exit_code = -1;
   thread_exit();
 
   /* If the fault is true fault, show info and exit. */

@@ -141,7 +141,7 @@ void sema_up(struct semaphore *sema) {
     thread_unblock(next);
 
     /* 우선순위 높은 애가 풀려났으면 */
-    if (!intr_context() && next->priority > thread_current()->priority) {
+    if (!intr_context() && get_priority(next) > thread_current()->priority) {
       thread_yield();
     }
   }
@@ -264,7 +264,7 @@ void lock_acquire(struct lock *lock) {
   }
 
   /* 나의 홀더를 현재 lock->holder로 설정 */
-  thread_current()->holder = lock->holder;
+  thread_current()->holder = lock->holder ? lock->holder : NULL;
   sema_down(&lock->semaphore);     /* waiters or get lock */
   lock->holder = thread_current(); /* 누군가가.. 락 획득 성공 */
 

@@ -5,6 +5,8 @@
 #include <list.h>
 #include <stdint.h>
 
+#include "filesys/directory.h"
+#include "filesys/file.h"
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #ifdef VM
@@ -43,15 +45,39 @@ typedef int tid_t;
 #define fix_sub_int(x, n) (x - n * F)             // x - n
 
 /* Max file descriptor */
-#define MAX_FD 128
+#define MAX_FD 512
 #define MIN_FD 2
+
+/* File descriptor of standard i/o */
 #define STDIN_FILENO 0
 #define STDOUT_FILENO 1
+
+/* File address of standard i/o */
+#define OPEN_STDIN (void *)-1
+#define OPEN_STDOUT (void *)-2
+#define CLOSE_STDIN (void *)-3
+#define CLOSE_STDOUT (void *)-4
+
+/* File */
+#define is_file_std(ptr) (((int)ptr) < 0)
+#define is_valid_fd(int) ((int >= 0) && (int < MAX_FD))
+
+/* child process status */
+#define CHILD_BASE 0
+#define CHILD_EXIT 1
+
+/* Kernel or User */
+#define KERN_TASK 0
+#define USER_TASK 1
+
+/* Max Nested Fork */
+#define MAX_FORK_DEPTH 28
 
 /* Terminated children list. */
 struct thread_child {
   tid_t tid;
   uint64_t rtn;
+  uint8_t status;
   struct list_elem elem;
 };
 
@@ -116,8 +142,8 @@ struct thread_child {
 struct thread {
   /* Owned by thread.c. */
   tid_t tid;                 /* Thread identifier. */
-  enum thread_status status; /* Thread state. */
   char name[16];             /* Name (for debugging purposes). */
+  enum thread_status status; /* Thread state. */
 
   int priority;            /* 나의 priority */
   uint8_t donate_list[64]; /* 기증받은 priority */
@@ -131,18 +157,23 @@ struct thread {
 
   uint64_t wake_tick; /* Wake Tick */
 
-  // #ifdef USERPROG
+#ifdef USERPROG
   /* Owned by userprog/process.c. */
-  uint64_t *pml4;    /* Page map level 4 */
-  uint8_t fd_cnt;    /* Used file descriptor */
-  struct file **fdt; /* File descriptor table */
+  uint8_t mode;           /* Kernel thread or User process */
+  uint64_t *pml4;         /* Page map level 4 */
+  struct file **fdt;      /* File descriptor table */
+  struct file *exec_file; /* User process's exec_file */
+  uint8_t fork_depth;     /* Nested Fork Count */
 
   struct thread *parent;
-  struct list exit_children;
-  //   struct list wait_children;
+  struct list children;
   struct semaphore fork_sema; /* Used for process fork */
   struct semaphore wait_sema; /* Used for process fork */
-// #endif
+
+  uint64_t exit_code; /* Return value of child */
+
+  struct intr_frame fork_tf; /* Context to fork  */
+#endif
 #ifdef VM
   /* Table for whole virtual memory owned by thread. */
   struct supplemental_page_table spt;

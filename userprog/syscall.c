@@ -1,6 +1,7 @@
 #include "userprog/syscall.h"
 
 #include <stdio.h>
+#include <string.h>
 #include <syscall-nr.h>
 
 #include "filesys/file.h"
@@ -11,6 +12,7 @@
 #include "threads/interrupt.h"
 #include "threads/loader.h"
 #include "threads/palloc.h"
+#include "threads/synch.h"
 #include "threads/thread.h"
 #include "userprog/gdt.h"
 #include "userprog/process.h"
@@ -31,6 +33,23 @@ void syscall_handler(struct intr_frame *);
 #define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
 
+static int allocate_fd(void);
+static void free_fd(int fd);
+
+void halt(void);
+void exit(int);
+bool create(const char *, unsigned);
+int open(const char *);
+void close(int);
+int read(int, void *, unsigned);
+int write(int, const void *, unsigned);
+int dup2(int, int);
+tid_t fork(const char *, struct intr_frame *);
+int exec(const char *);
+bool remove(const char *);
+void seek(int, unsigned);
+unsigned tell(int);
+
 void syscall_init(void) {
   write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48 | ((uint64_t)SEL_KCSEG)
                                                                << 32);
@@ -45,106 +64,203 @@ void syscall_init(void) {
 
 /* System Call Implementation */
 
-/* power off system */
+/* Power off system. */
 void halt(void) {
   power_off();
   NOT_REACHED();
 }
 
-/* terminate current process */
+/* Terminate current process. */
 void exit(int status) {
-  thread_current()->tf.R.rdi = status;
+  thread_current()->exit_code = status;
   thread_exit();
   return;
 }
 
-/* create a new file */
+/* Create a new file. */
 bool create(const char *file, unsigned initial_size) {
   if (file == NULL) exit(-1);  // 잘못된 포인터인 경우 즉시 종료
   return filesys_create(file, initial_size);
 }
 
-/* return free fd */
-// TODO: linked-list로
-static int free_fd() {
-  if (thread_current()->fd_cnt >= MAX_FD) return -1;
-
-  for (int fd = MIN_FD; fd < MAX_FD; fd++) {
-    if (thread_current()->fdt[fd] == NULL) {
-      ASSERT(fd >= MIN_FD);
-      return fd;
-    }
-  }
-}
-
-/* open a new file */
+/* Open a new file. */
 int open(const char *file_name) {
   if (file_name == NULL) return -1;
+  struct thread *curr = thread_current();
 
-  int fd = free_fd();
+  int fd = allocate_fd();
   struct file *file = filesys_open(file_name);
 
-  if (fd < MIN_FD || file == NULL) return -1;
-
-  thread_current()->fdt[fd] = file;
-  thread_current()->fd_cnt++;
+  if (!is_valid_fd(fd) || file == NULL) return -1;
+  curr->fdt[fd] = file;
 
   return fd;
 }
 
-/* close a file */
+/* Close a file. */
 void close(int fd) {
-  struct file *file = thread_current()->fdt[fd];
-  if (fd < MIN_FD || file == NULL) return;
+  if (!is_valid_fd(fd)) return;
+  struct file **fdt = thread_current()->fdt;
+
+  /* Standard I/O */
+  if (fdt[fd] == OPEN_STDIN) {
+    fdt[fd] = CLOSE_STDIN;
+    return;
+  }
+  if (fdt[fd] == OPEN_STDOUT) {
+    fdt[fd] = CLOSE_STDOUT;
+    return;
+  }
+
+  if (is_file_std(fdt[fd])) return;
+
+  /* Close file. */
+  struct file *file = fdt[fd];
+  if (file == NULL) return;
+
+  /* Remove from fd list. */
+  if (file->dup_cnt > 0) {
+    file->dup_cnt--;
+    free_fd(fd);
+    return;
+  }
 
   file_close(file);
-  thread_current()->fdt[fd] = NULL;
-  thread_current()->fd_cnt--;
+  free_fd(fd);
 }
 
-/* read from file (to buffer) */
+/* Read from file to buffer. */
 int read(int fd, void *buffer, unsigned size) {
-  if (fd == STDIN_FILENO) {
-    return input_getc();
+  if (!is_valid_fd(fd)) return 0;
+  struct file **fdt = thread_current()->fdt;
+
+  /* Standard I/O */
+  if (is_file_std(fdt[fd])) {
+    if (fdt[fd] == OPEN_STDIN) {
+      return input_getc();
+    } else
+      return 0;
   }
-  struct file *file = thread_current()->fdt[fd];
+
+  struct file *file = fdt[fd];
   if (file == NULL) return -1;
-  return file_read(file, buffer, size);
+
+  int bytes = 0;
+  lock_acquire(file_inode_lock(file));
+  bytes = file_read(file, buffer, size);
+  lock_release(file_inode_lock(file));
+  return bytes;
 }
 
-/* write buffer to file */
+/* Write from buffer to file. */
 int write(int fd, const void *buffer, unsigned size) {
-  if (fd == STDOUT_FILENO) {
-    putbuf((char *)buffer, size);
-    return size;
+  if (!is_valid_fd(fd)) return 0;
+  struct file **fdt = thread_current()->fdt;
+
+  /* Standard I/O */
+  if (is_file_std(fdt[fd])) {
+    if (fdt[fd] == OPEN_STDOUT) {
+      putbuf((char *)buffer, size);
+      return size;
+    } else
+      return 0;
   }
-  struct file *file = thread_current()->fdt[fd];
-  if (file == NULL) return -1;
-  return file_write(file, buffer, size);
+
+  struct file *file = fdt[fd];
+  if (file == NULL || !file_writable(file)) return 0;
+
+  int bytes = 0;
+  lock_acquire(file_inode_lock(file));
+  bytes = file_write(file, buffer, size);
+  lock_release(file_inode_lock(file));
+  return bytes;
 }
 
+/* Duplicate file of oldfd to newfd. */
+int dup2(int oldfd, int newfd) {
+  if (!is_valid_fd(oldfd)) return -1;
+  if (!is_valid_fd(newfd)) return -1;
+
+  struct file **fdt = thread_current()->fdt;
+
+  if (oldfd == newfd) return newfd;
+  if (fdt[oldfd] == NULL) return -1;
+
+  /* If standard i/o, just copy value. */
+  if (is_file_std(fdt[oldfd])) {
+    fdt[newfd] = fdt[oldfd];
+    return newfd;
+  }
+
+  /* If newfd already has a file, close. */
+  if (fdt[newfd]) {
+    close(newfd);
+  }
+
+  /* Duplicate file descriptor. */
+  fdt[newfd] = fdt[oldfd];
+  fdt[newfd]->dup_cnt++;
+  return newfd;
+}
+
+/* Return filesize. */
 int filesize(int fd) {
-  if (fd < MIN_FD) return -1;
-  struct file *file = thread_current()->fdt[fd];
-  if (file == NULL) return -1;
-  return file_length(file);
+  if (!is_valid_fd(fd)) return -1;
+  struct file **fdt = thread_current()->fdt;
+  if (fdt[fd] == NULL) return -1;
+  if (is_file_std(fdt[fd])) return -1;
+
+  return file_length(fdt[fd]);
 }
 
+/* Fork a child process. */
 tid_t fork(const char *thread_name, struct intr_frame *user_if) {
-  //
+  ASSERT(user_if);
   return process_fork(thread_name, user_if);
 }
 
+/* Wait for child tid to exit. */
 int wait(tid_t tid) {
-  //
+  ASSERT(tid >= 0);
   return process_wait(tid);
 }
 
+/* Execute process. */
 int exec(const char *cmd_line) {
   const char *fn_copy = palloc_get_page(0);
   strlcpy(fn_copy, cmd_line, strlen(cmd_line) + 1);
   int success = process_exec(fn_copy);
   if (success < 0) exit(-1);
+}
+
+/* Remove file. */
+bool remove(const char *file) {
+  if (file == NULL) return false;
+  return filesys_remove(file);
+}
+
+/* Seek file. */
+void seek(int fd, unsigned position) {
+  if (!is_valid_fd(fd)) return;
+  struct file **fdt = thread_current()->fdt;
+
+  if (fdt[fd] == NULL) return;
+  if (is_file_std(fdt[fd])) return;
+
+  lock_acquire(file_inode_lock(fdt[fd]));
+  file_seek(fdt[fd], position);
+  lock_release(file_inode_lock(fdt[fd]));
+}
+
+/* Tell file. */
+unsigned tell(int fd) {
+  if (!is_valid_fd(fd)) return;
+  struct file **fdt = thread_current()->fdt;
+
+  if (fdt[fd] == NULL) return;
+  if (is_file_std(fdt[fd])) return;
+
+  return file_tell(fdt[fd]);
 }
 
 /* The main system call interface */
@@ -174,8 +290,10 @@ void syscall_handler(struct intr_frame *f) {
       f->R.rax = create((char *)f->R.rdi, f->R.rsi);
       break;
     }
-    case SYS_REMOVE:
+    case SYS_REMOVE: {
+      f->R.rax = remove((const char *)f->R.rdi);
       break;
+    }
     case SYS_OPEN: {
       f->R.rax = open((const char *)f->R.rdi);
       break;
@@ -192,15 +310,43 @@ void syscall_handler(struct intr_frame *f) {
       f->R.rax = write((int)f->R.rdi, (void *)f->R.rsi, (unsigned)f->R.rdx);
       break;
     }
-    case SYS_SEEK:
+    case SYS_SEEK: {
+      seek((int)f->R.rdi, (unsigned)f->R.rsi);
       break;
-    case SYS_TELL:
+    }
+    case SYS_TELL: {
+      f->R.rax = tell((int)f->R.rdi);
       break;
+    }
     case SYS_CLOSE: {
       close((int)f->R.rdi);
+      break;
+    }
+    case SYS_DUP2: {
+      f->R.rax = dup2((int)f->R.rdi, (int)f->R.rsi);
       break;
     }
     default:
       break;
   }
+}
+
+// TODO: linked-list로?
+/* Get freed file descriptor */
+static int allocate_fd() {
+  struct thread *curr = thread_current();
+  int fd;
+  for (fd = MIN_FD; fd < MAX_FD; fd++) {
+    if (curr->fdt[fd] == NULL) {
+      ASSERT(is_valid_fd(fd))
+      return fd;
+    }
+  }
+  return -1;
+}
+
+/* Free file descriptor */
+static void free_fd(int fd) {
+  ASSERT(is_valid_fd(fd))
+  thread_current()->fdt[fd] = NULL;
 }

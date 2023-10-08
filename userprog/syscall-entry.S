@@ -30,7 +30,7 @@ syscall_entry:
 	push %r8
 	push %r9
 	push %r10
-	pushq $0 /* skip r11 */
+	pushq $0 /* skip r11, since it store RFLAG info */
 	movq temp2(%rip), %r12
 	push %r12
 	push %r13
@@ -39,8 +39,10 @@ syscall_entry:
 	movq %rsp, %rdi
 
 check_intr:
-	btsq $9, %r11          /* Check whether we recover the interrupt */
-	jnb no_sti
+	btsq $9, %r11          /* Check whether we recover the interrupt
+                              btsq 는 if를 1로 설정하고, 원래 값을 CF 에 저장한다 */
+	jnb no_sti             /* jnb는 CF를 검사하여 0이면 no_sti로 jump,
+                              아니면 sti로 jump한다 */
 	sti                    /* restore interrupt */
 no_sti:
 	movabs $syscall_handler, %r12

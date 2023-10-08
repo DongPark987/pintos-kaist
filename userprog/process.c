@@ -7,8 +7,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "filesys/directory.h"
-#include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "intrinsic.h"
 #include "threads/flags.h"
@@ -27,22 +25,57 @@
 
 #define MAX_ARGS 100
 
-static void process_cleanup(void);
-static bool load(const char *file_name, struct intr_frame *if_);
-static void initd(void *f_name);
 static void __do_fork(void *);
+static void initd(void *f_name);
+static void process_cleanup(void);
+// static void fdt_cleanup(struct fdt_entry *);
+static void fdt_cleanup(struct file **);
+static void child_list_cleanup(struct list *);
+static bool load(const char *file_name, struct intr_frame *if_);
+static struct thread_child *get_child_by_tid(struct list *, tid_t);
 
-/* fork 에서 parent의 user context */
-static struct intr_frame context;
-static struct semaphore sema;
+/* Control execution order. */
+static struct semaphore exec_sema;
+
+/* Clean child list. */
+static void child_list_cleanup(struct list *list) {
+  struct list_elem *front;
+  struct thread_child *child;
+  while (!list_empty(list)) {
+    front = list_pop_front(list);
+    child = list_entry(front, struct thread_child, elem);
+    free(child);
+  }
+}
+
+/* Search for child by tid. */
+static struct thread_child *get_child_by_tid(struct list *list, tid_t tid) {
+  struct list_elem *curr_elem;
+  struct thread_child *curr;
+  for (curr_elem = list_begin(list); curr_elem != list_end(list);
+       curr_elem = list_next(curr_elem)) {
+    curr = list_entry(curr_elem, struct thread_child, elem);
+    if (curr->tid == tid) {
+      return curr;
+    }
+  }
+  return NULL;
+}
 
 /* General process initializer for initd and other process. */
 static void process_init(void) {
-  struct thread *current = thread_current();
+  struct thread *curr = thread_current();
+  /* Set as user task. */
+  curr->mode = USER_TASK;
 
-  /* create file descriptor table */
-  current->fdt = palloc_get_page(0);
-  current->fd_cnt = MIN_FD;
+  /* Init fork depth */
+  curr->fork_depth = 0;
+
+  /* Create file descriptor table. */
+  curr->fdt = palloc_get_page(PAL_ZERO);
+
+  curr->fdt[STDIN_FILENO] = OPEN_STDIN;
+  curr->fdt[STDOUT_FILENO] = OPEN_STDOUT;
 }
 
 /* Starts the first userland program, called "initd", loaded from FILE_NAME.
@@ -64,7 +97,10 @@ tid_t process_create_initd(const char *file_name) {
   char *save_ptr;
   strtok_r(file_name, " ", &save_ptr);
 
-  tid = thread_create(file_name, PRI_DEFAULT + 1, initd, fn_copy);
+  /* Init execute semaphore */
+  sema_init(&exec_sema, 1);
+
+  tid = thread_create(file_name, PRI_DEFAULT, initd, fn_copy);
   if (tid == TID_ERROR) palloc_free_page(fn_copy);
   return tid;
 }
@@ -74,9 +110,12 @@ static void initd(void *f_name) {
 #ifdef VM
   supplemental_page_table_init(&thread_current()->spt);
 #endif
-  struct thread *current = thread_current();
 
+  struct thread *curr = thread_current();
+
+  /* Create file descriptor table. */
   process_init();
+
   if (process_exec(f_name) < 0) PANIC("Fail to launch initd\n");
   NOT_REACHED();
 }
@@ -85,21 +124,27 @@ static void initd(void *f_name) {
  * TID_ERROR if the thread cannot be created.
  * Clone current thread to new thread. */
 tid_t process_fork(const char *name, struct intr_frame *if_) {
-  memcpy(&context, if_, sizeof(struct intr_frame));
+  struct thread *parent = thread_current();
 
-  tid_t tid = thread_create(name, PRI_DEFAULT + 1, __do_fork, thread_current());
-  sema_down(&thread_current()->fork_sema); /* Lock parent. */
+  /* Backup parent's context before fork. */
+  memcpy(&parent->fork_tf, if_, sizeof(struct intr_frame));
+
+  /* Create thread to fork process. */
+  if (parent->fork_depth >= MAX_FORK_DEPTH) return TID_ERROR;
+  tid_t tid = thread_create(name, PRI_DEFAULT, __do_fork, parent);
+
+  /* Lock parent. */
+  sema_down(&parent->fork_sema);
   return tid;
 }
 
 #ifndef VM
 
-static cnt = 0;
 /* Duplicate the parent's address space by passing this function to the
  * pml4_for_each. This is only for the project 2.
- * @param va는 페이지 테이블 엔트리의 가상 주소 */
+ * @param va is virtual address of pte. */
 static bool duplicate_pte(uint64_t *pte, void *va, void *aux) {
-  struct thread *current = thread_current();
+  struct thread *curr = thread_current();
   struct thread *parent = (struct thread *)aux;
   void *parent_page;
   void *newpage;
@@ -107,7 +152,7 @@ static bool duplicate_pte(uint64_t *pte, void *va, void *aux) {
 
   /* If the parent_page is kernel page, then return immediately. */
   if (is_kernel_vaddr(va)) {
-    return true;  // 복사하지 않음
+    return true;
   }
 
   /* Resolve VA from the parent's page map level 4. */
@@ -127,34 +172,28 @@ static bool duplicate_pte(uint64_t *pte, void *va, void *aux) {
 
   /* Add new page to child's page table at address VA with WRITABLE
    * permission. */
-  if (!pml4_set_page(current->pml4, va, newpage, writable)) {
-    /* 6. TODO: if fail to insert page, do error handling. */
+  if (!pml4_set_page(curr->pml4, va, newpage, writable)) {
+    return false;
   }
   return true;
 }
 #endif
 
-/* A thread function that copies parent's execution context.
- * Hint) parent->tf does not hold the userland context of the process.
- *       That is, you are required to pass second argument of process_fork to
- *       this function. */
+/* A thread function that copies parent's execution context.*/
 static void __do_fork(void *aux) {
   struct intr_frame if_;
   struct thread *parent = (struct thread *)aux;
-  struct thread *current = thread_current();
-  struct intr_frame *parent_if;
+  struct thread *curr = thread_current();
   bool succ = true;
 
-  parent_if = &context;  // global
-
   /* Read the cpu context to local stack. */
-  memcpy(&if_, parent_if, sizeof(struct intr_frame));
+  memcpy(&if_, &parent->fork_tf, sizeof(struct intr_frame));
 
-  /* Duplicate PT */
-  current->pml4 = pml4_create();
-  if (current->pml4 == NULL) goto error;
+  /* Duplicate page table. */
+  curr->pml4 = pml4_create();
+  if (curr->pml4 == NULL) goto error;
 
-  process_activate(current);
+  process_activate(curr);
 
 #ifdef VM
   supplemental_page_table_init(&current->spt);
@@ -163,17 +202,38 @@ static void __do_fork(void *aux) {
   if (!pml4_for_each(parent->pml4, duplicate_pte, parent)) goto error;
 #endif
 
+  /* Get new page for fdt. */
   process_init();
 
-  /* Duplicate file descriptor table */
-  for (int i = MIN_FD; i < MAX_FD && parent->fd_cnt > MIN_FD; i++) {
-    if (parent->fdt[i] != NULL) {
-      current->fdt[i] = file_duplicate(parent->fdt[i]);
+  /* Duplicate file descriptor table. */
+  for (int fd = 0; fd < MAX_FD; fd++) {
+    if (parent->fdt[fd] == NULL) continue;
+
+    /* If file is standard I/O, copy value. */
+    if (is_file_std(parent->fdt[fd])) {
+      curr->fdt[fd] = parent->fdt[fd];
+      continue;
+    }
+
+    /* If alreay copied, ignore. */
+    if (curr->fdt[fd]) continue;
+
+    curr->fdt[fd] = file_duplicate(parent->fdt[fd]);
+    curr->fdt[fd]->dup_cnt = parent->fdt[fd]->dup_cnt;
+
+    /* Copy all duplicated. */
+    for (int dup_fd = 0; dup_fd < MAX_FD && dup_fd != fd; dup_fd++) {
+      if (parent->fdt[fd] == parent->fdt[dup_fd]) {
+        curr->fdt[dup_fd] = curr->fdt[fd];
+      }
     }
   }
 
-  /* Forked process return value */
+  /* Forked process return value. */
   if_.R.rax = 0;
+
+  /* Update fork depth. */
+  curr->fork_depth = parent->fork_depth + 1;
 
   /* Let parent run. */
   sema_up(&parent->fork_sema);
@@ -203,7 +263,9 @@ int process_exec(void *f_name) {
   process_cleanup();
 
   /* And then load the binary */
+  sema_down(&exec_sema);
   success = load(file_name, &_if);
+  sema_up(&exec_sema);
 
   /* If load failed, quit. */
   palloc_free_page(file_name);
@@ -214,87 +276,105 @@ int process_exec(void *f_name) {
   NOT_REACHED();
 }
 
-// TODO: move helper function
-struct thread_child *get_child_by_tid(struct list *list, tid_t tid) {
-  struct list_elem *curr_elem;
-  struct thread_child *curr;
-  for (curr_elem = list_begin(list); curr_elem != list_end(list);
-       curr_elem = list_next(curr_elem)) {
-    curr = list_entry(curr_elem, struct thread_child, elem);
-    if (curr->tid == tid) {
-      return curr;
-    }
-  }
-  return NULL;
-}
-
 /* Waits for thread TID to die and returns its exit status.  If
  * it was terminated by the kernel (i.e. killed due to an
  * exception), returns -1.  If TID is invalid or if it was not a
  * child of the calling process, or if process_wait() has already
  * been successfully called for the given TID, returns -1
- * immediately, without waiting.
- *
- * This function will be implemented in problem 2-2.  For now, it
- * does nothing. */
+ * immediately, without waiting. */
 int process_wait(tid_t child_tid) {
-  int rtn;
-
   struct thread *parent = thread_current();
   struct thread_child *target;
 
-  /* block 됩니다. */
-  sema_down(&parent->wait_sema);
+  int rtn;
 
-  target = get_child_by_tid(&parent->exit_children, child_tid);
-  if (target) {
-    rtn = target->rtn;
-    list_remove(&target->elem);
-    sema_init(&parent->wait_sema, 0);
-    free(target);
-    return rtn;
-  }
+  /* If child_tid is invalid, return error */
+  target = get_child_by_tid(&parent->children, child_tid);
+  if (!target) return -1;
+
+  /* Block parent until child exit. */
+  do {
+    /* If child exit, remove from list and return. */
+    if (target->status == CHILD_EXIT) {
+      rtn = target->rtn;
+      list_remove(&target->elem);
+      sema_init(&parent->wait_sema, 0);
+      free(target);
+      return rtn;
+    }
+    /* Wait for child_tid to exit. */
+    sema_down(&parent->wait_sema);
+    target = get_child_by_tid(&parent->children, child_tid);
+
+  } while (target);
 }
 
-static void child_list_cleanup(struct list *list) {
-  struct list_elem *front;
-  struct thread_child *child;
-  while (!list_empty(list)) {
-    front = list_pop_front(list);
-    child = list_entry(front, struct thread_child, elem);
-    free(child);
+/* Clean up all file descriptor table. */
+static void fdt_cleanup(struct file **fdt) {
+  struct thread *curr = thread_current();
+  struct lock *file_lock;
+  struct file *file;
+
+  if (fdt == NULL) return;
+
+  /* Close all files */
+  for (int fd = 0; fd < MAX_FD; fd++) {
+    if (is_file_std(fdt[fd])) continue;
+    if (fdt[fd] == NULL) continue;
+
+    /* Close file. */
+    file = fdt[fd];
+
+    file_lock = file_inode_lock(file);
+    if (file_lock->holder == curr) {
+      lock_release(file_lock);
+    }
+
+    /* If duplicated file descriptor. */
+    if (file->dup_cnt > 0) {
+      file->dup_cnt--;
+      //   list_remove(&fdt[fd].elem);
+      continue;
+    }
+    file_close(file);
   }
+  /* And free file descriptor table. */
+  curr->fdt = NULL;
+  palloc_free_page(fdt);
 }
 
 /* Exit the process. This function is called by thread_exit (). */
 void process_exit(void) {
   struct thread *curr = thread_current();
+  struct thread_child *child;
 
-  /* Let run parent process. */
-  if (curr->parent) {
-    struct thread_child *child = malloc(sizeof(struct thread_child));
-    child->rtn = curr->tf.R.rdi;
-    child->tid = curr->tid;
-    list_push_back(&curr->parent->exit_children, &child->elem);
-    sema_up(&curr->parent->wait_sema);
-  } else {
-    child_list_cleanup(&curr->parent->exit_children);
+  /* Clean my child list */
+  child_list_cleanup(&curr->children);
+
+  /* If current is user process, */
+  if (curr->mode == USER_TASK) {
+    /* Clean file descriptor table. */
+    fdt_cleanup(curr->fdt);
+
+    /* Close exec_file. */
+    if (curr->exec_file) file_close(curr->exec_file);
+
+    /* Finaly, print termination message. */
+    printf("%s: exit(%lld)\n", curr->name, curr->exit_code);
   }
 
-  /* Clean file descriptor table. */
-  struct file **fdt = curr->fdt;
-  if (fdt != NULL) {
-    curr->fdt = NULL;
-    palloc_free_page(fdt);
-  }
-
-  /* If user process, print termination message. */
-  // TODO: user process, kernel thread 구분 how?
-  if (is_kernel_vaddr(curr->pml4)) {
-    printf("%s: exit(%lld)\n", curr->name, curr->tf.R.rdi);
-  }
-
+  /* Clean up pml4 */
   process_cleanup();
+
+  /* Let parent process run. */
+  if (curr->parent) {
+    child = get_child_by_tid(&curr->parent->children, curr->tid);
+    if (child) {
+      child->status = CHILD_EXIT;
+      child->rtn = curr->exit_code;
+    }
+    sema_up(&curr->parent->wait_sema);
+  }
 }
 
 /* Free the current process's resources. */
@@ -430,6 +510,9 @@ static bool load(const char *file_name, struct intr_frame *if_) {
     goto done;
   }
 
+  /* Set this file unwritable */
+  file_deny_write(file);
+
   /* Read and verify executable header. */
   if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr ||
       memcmp(ehdr.e_ident, "\177ELF\2\1\1", 7) || ehdr.e_type != 2 ||
@@ -541,7 +624,8 @@ static bool load(const char *file_name, struct intr_frame *if_) {
 
 done:
   /* We arrive here whether the load is successful or not. */
-  file_close(file);
+  if (!success) file_close(file);
+  t->exec_file = file;
   return success;
 }
 

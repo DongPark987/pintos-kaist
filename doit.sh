@@ -1,18 +1,90 @@
+
+ARGS_NONE="pintos --fs-disk=10 -p tests/userprog/args-none:args-none -- -q  -f run args-none"
+ARGS_SINGLE="pintos --fs-disk=10 -p tests/userprog/args-single:args-single -- -q  -f run 'args-single onearg'"
+ARGS_MULTIPLE="pintos --fs-disk=10 -p tests/userprog/args-multiple:args-multiple -- -q  -f run 'args-multiple some arguments for you!'"
+ARGS_MANY="pintos --fs-disk=10 -p tests/userprog/args-many:args-many -- -q  -f run 'args-many a b c d e f g h i j k l m n o p q r s t u v'"
+ARGS_DBL_SPACE="pintos --fs-disk=10 -p tests/userprog/args-dbl-space:args-dbl-space -- -q  -f run 'args-dbl-space two spaces!'"
+HALT="pintos --fs-disk=10 -p tests/userprog/halt:halt -- -q  -f run halt"
+EXIT="pintos --fs-disk=10 -p tests/userprog/exit:exit -- -q  -f run exit"
+CREATE_NORMAL="pintos --fs-disk=10 -p tests/userprog/create-normal:create-normal -- -q  -f run create-normal"
+CREATE_MANY="pintos --fs-disk=10 -p tests/userprog/create-empty:create-empty -- -q  -f run create-empty"
+CREATE_NULL="pintos --fs-disk=10 -p tests/userprog/create-null:create-null -- -q  -f run create-null"
+CREATE_BAD="pintos --fs-disk=10 -p tests/userprog/create-bad-ptr:create-bad-ptr -- -q  -f run create-bad-ptr"
+CREATE_LONG="pintos --fs-disk=10 -p tests/userprog/create-long:create-long -- -q  -f run create-long"
+CREATE_EXISTS="pintos --fs-disk=10 -p tests/userprog/create-exists:create-exists -- -q  -f run create-exists"
+CREATE_BOUND="pintos --fs-disk=10 -p tests/userprog/create-bound:create-bound -- -q  -f run create-bound"
+OPEN_NORMAL="pintos --fs-disk=10 -p tests/userprog/open-normal:open-normal -p ../../tests/userprog/sample.txt:sample.txt -- -q  -f run open-normal"
+OPEN_MISSING="pintos --fs-disk=10 -p tests/userprog/open-missing:open-missing -- -q  -f run open-missing"
+OPEN_BOUNDARY="pintos --fs-disk=10 -p tests/userprog/open-boundary:open-boundary -p ../../tests/userprog/sample.txt:sample.txt -- -q  -f run open-boundary"
+OPEN_EMPTY="pintos --fs-disk=10 -p tests/userprog/open-empty:open-empty -- -q  -f run open-empty"
+OPEN_NULL="pintos --fs-disk=10 -p tests/userprog/open-null:open-null -- -q  -f run open-null"
+OPEN_BAD_PTR="pintos --fs-disk=10 -p tests/userprog/open-bad-ptr:open-bad-ptr -- -q  -f run open-bad-ptr"
+OPEN_TWICE="pintos --fs-disk=10 -p tests/userprog/open-twice:open-twice -p ../../tests/userprog/sample.txt:sample.txt -- -q  -f run open-twice"
+CLOSE_NORMAL="pintos --fs-disk=10 -p tests/userprog/close-normal:close-normal -p ../../tests/userprog/sample.txt:sample.txt -- -q  -f run close-normal"
+CLOSE_TWICE="pintos --fs-disk=10 -p tests/userprog/close-twice:close-twice -p ../../tests/userprog/sample.txt:sample.txt -- -q  -f run close-twice"
+CLOSE_BAD_FD="pintos --fs-disk=10 -p tests/userprog/close-bad-fd:close-bad-fd -- -q  -f run close-bad-fd"
+READ_NORMAL="pintos --fs-disk=10 -p tests/userprog/read-normal:read-normal -p ../../tests/userprog/sample.txt:sample.txt -- -q  -f run read-normal"
+READ_BAD_PTR="pintos --fs-disk=10 -p tests/userprog/read-bad-ptr:read-bad-ptr -p ../../tests/userprog/sample.txt:sample.txt -- -q  -f run read-bad-ptr"
+READ_BOUNDARY="pintos --fs-disk=10 -p tests/userprog/read-boundary:read-boundary -p ../../tests/userprog/sample.txt:sample.txt -- -q  -f run read-boundary"
+READ_ZERO="pintos --fs-disk=10 -p tests/userprog/read-zero:read-zero -p ../../tests/userprog/sample.txt:sample.txt -- -q  -f run read-zero"
+READ_STDOUT="pintos --fs-disk=10 -p tests/userprog/read-stdout:read-stdout -- -q  -f run read-stdout"
+READ_BAD_FD="pintos --fs-disk=10 -p tests/userprog/read-bad-fd:read-bad-fd -- -q  -f run read-bad-fd"
+WRITE_NORMAL="pintos --fs-disk=10 -p tests/userprog/write-normal:write-normal -p ../../tests/userprog/sample.txt:sample.txt -- -q  -f run write-normal"
+WRITE_BAD_PTR="pintos --fs-disk=10 -p tests/userprog/write-bad-ptr:write-bad-ptr -p ../../tests/userprog/sample.txt:sample.txt -- -q  -f run write-bad-ptr"
+WRITE_BOUNDARY="pintos --fs-disk=10 -p tests/userprog/write-boundary:write-boundary -p ../../tests/userprog/sample.txt:sample.txt -- -q  -f run write-boundary"
+WRITE_ZERO="pintos --fs-disk=10 -p tests/userprog/write-zero:write-zero -p ../../tests/userprog/sample.txt:sample.txt -- -q  -f run write-zero"
+WRITE_STDIN="pintos --fs-disk=10 -p tests/userprog/write-stdin:write-stdin -- -q  -f run write-stdin"
+WRITE_BAD_FD="pintos --fs-disk=10 -p tests/userprog/write-bad-fd:write-bad-fd -- -q  -f run write-bad-fd"
+FORK_ONCE="pintos --fs-disk=10 -p tests/userprog/fork-once:fork-once -- -q  -f run fork-once"
+FORK_MULTIPLE="pintos --fs-disk=10 -p tests/userprog/fork-multiple:fork-multiple -- -q  -f run fork-multiple"
+FORK_RECURSIVE="pintos --fs-disk=10 -p tests/userprog/fork-recursive:fork-recursive -- -q  -f run fork-recursive"
+FORK_READ="pintos --fs-disk=10 -p tests/userprog/fork-read:fork-read -p ../../tests/userprog/sample.txt:sample.txt -- -q  -f run fork-read"
+FORK_CLOSE="pintos --fs-disk=10 -p tests/userprog/fork-close:fork-close -p ../../tests/userprog/sample.txt:sample.txt -- -q  -f run fork-close"
+FORK_BOUNDARY="pintos --fs-disk=10 -p tests/userprog/fork-boundary:fork-boundary -- -q  -f run fork-boundary"
+EXEC_ONCE="pintos --fs-disk=10 -p tests/userprog/exec-once:exec-once -p tests/userprog/child-simple:child-simple -- -q  -f run exec-once"
+EXEC_ARG="pintos --fs-disk=10 -p tests/userprog/exec-arg:exec-arg -p tests/userprog/child-args:child-args -- -q  -f run exec-arg"
+EXEC_BOUNDARY="pintos --fs-disk=10 -p tests/userprog/exec-boundary:exec-boundary -p tests/userprog/child-simple:child-simple -- -q  -f run exec-boundary"
+EXEC_MISSING="pintos --fs-disk=10 -p tests/userprog/exec-missing:exec-missing -- -q  -f run exec-missing"
+EXEC_BAD_PTR="pintos --fs-disk=10 -p tests/userprog/exec-bad-ptr:exec-bad-ptr -- -q  -f run exec-bad-ptr"
+EXEC_READ="pintos --fs-disk=10 -p tests/userprog/exec-read:exec-read -p ../../tests/userprog/sample.txt:sample.txt -p tests/userprog/child-read:child-read -- -q  -f run exec-read"
+WAIT_SIMPLE="pintos --fs-disk=10 -p tests/userprog/wait-simple:wait-simple -p tests/userprog/child-simple:child-simple -- -q  -f run wait-simple"
+WAIT_TWICE="pintos --fs-disk=10 -p tests/userprog/wait-twice:wait-twice -p tests/userprog/child-simple:child-simple -- -q  -f run wait-twice"
+WAIT_KILLED="pintos --fs-disk=10 -p tests/userprog/wait-killed:wait-killed -p tests/userprog/child-bad:child-bad -- -q  -f run wait-killed"
+WAIT_BAD_PID="pintos --fs-disk=10 -p tests/userprog/wait-bad-pid:wait-bad-pid -- -q  -f run wait-bad-pid"
+MULTI_RECURSIVE="pintos --fs-disk=10 -p tests/userprog/multi-recurse:multi-recurse -- -q  -f run 'multi-recurse 15'"
+MULTI_CHILD_FD="pintos --fs-disk=10 -p tests/userprog/multi-child-fd:multi-child-fd -p ../../tests/userprog/sample.txt:sample.txt -p tests/userprog/child-close:child-close -- -q  -f run multi-child-fd"
+ROX_SIMPLE="pintos --fs-disk=10 -p tests/userprog/rox-simple:rox-simple -- -q  -f run rox-simple"
+ROX_CHILD="pintos --fs-disk=10 -p tests/userprog/rox-child:rox-child -p tests/userprog/child-rox:child-rox -- -q  -f run rox-child"
+ROX_MULTICHILD="pintos --fs-disk=10 -p tests/userprog/rox-multichild:rox-multichild -p tests/userprog/child-rox:child-rox -- -q  -f run rox-multichild"
+BAD_READ="pintos --fs-disk=10 -p tests/userprog/bad-read:bad-read -- -q  -f run bad-read"
+BAD_WRITE="pintos --fs-disk=10 -p tests/userprog/bad-write:bad-write -- -q  -f run bad-write"
+BAD_READ2="pintos --fs-disk=10 -p tests/userprog/bad-read2:bad-read2 -- -q  -f run bad-read2"
+BAD_WRITE2="pintos --fs-disk=10 -p tests/userprog/bad-write2:bad-write2 -- -q  -f run bad-write2"
+BAD_JUMP="pintos --fs-disk=10 -p tests/userprog/bad-jump:bad-jump -- -q  -f run bad-jump"
+BAD_JUMP2="pintos --fs-disk=10 -p tests/userprog/bad-jump2:bad-jump2 -- -q  -f run bad-jump2"
+LG_CREATE="pintos --fs-disk=10 -p tests/filesys/base/lg-create:lg-create -- -q  -f run lg-create"
+LG_FULL="pintos --fs-disk=10 -p tests/filesys/base/lg-full:lg-full -- -q  -f run lg-full"
+LG_RANDOM="pintos --fs-disk=10 -p tests/filesys/base/lg-random:lg-random -- -q  -f run lg-random"
+LG_SEQ_BLOCK="pintos --fs-disk=10 -p tests/filesys/base/lg-seq-block:lg-seq-block -- -q  -f run lg-seq-block"
+LG_SEQ_RANDOM="pintos --fs-disk=10 -p tests/filesys/base/lg-seq-random:lg-seq-random -- -q  -f run lg-seq-random"
+SM_CREATE="pintos --fs-disk=10 -p tests/filesys/base/sm-create:sm-create -- -q  -f run sm-create"
+SM_FULL="pintos --fs-disk=10 -p tests/filesys/base/sm-full:sm-full -- -q  -f run sm-full"
+SM_RANDOM="pintos --fs-disk=10 -p tests/filesys/base/sm-random:sm-random -- -q  -f run sm-random"
+SM_SEQ_BLOCK="pintos --fs-disk=10 -p tests/filesys/base/sm-seq-block:sm-seq-block -- -q  -f run sm-seq-block"
+SM_SEQ_RANDOM="pintos --fs-disk=10 -p tests/filesys/base/sm-seq-random:sm-seq-random -- -q  -f run sm-seq-random"
+SYN_READ="pintos -v -k -T 300 -m 20  --fs-disk=10 -p tests/filesys/base/syn-read:syn-read -p tests/filesys/base/child-syn-read:child-syn-read -- -q  -f run syn-read"
+SYN_REMOVE="pintos --fs-disk=10 -p tests/filesys/base/syn-remove:syn-remove -- -q  -f run syn-remove"
+SYN_WRITE="pintos --fs-disk=10 -p tests/filesys/base/syn-write:syn-write -p tests/filesys/base/child-syn-wrt:child-syn-wrt -- -q  -f run syn-write"
+MULTI_OOM="pintos -v -k -T 600 -m 20 -m 20  --fs-disk=10 -p tests/userprog/no-vm/multi-oom:multi-oom -- -q  -f run multi-oom"
+DUP2_SIMPLE="pintos --fs-disk=10 -p tests/userprog/dup2/dup2-simple:dup2-simple -p ../../tests/userprog/dup2/sample.txt:sample.txt -- -q   -f run dup2-simple"
+DUP2_COMPLEX="pintos --fs-disk=10 -p tests/userprog/dup2/dup2-complex:dup2-complex -p ../../tests/userprog/dup2/sample.txt:sample.txt -- -q   -f run dup2-complex"
+
+
 # cd threads
 cd userprog
 make clean
 make
 cd build
 source ../../activate
-# pintos -- -q run priority-donate-chain
 
-# pintos --fs-disk=10 -p tests/userprog/args-single:args-single -- -q -f run 'args-single onearg'
-# pintos --fs-disk=10 -p tests/userprog/args-null:args-null -- -q -f run 'args-null'
-# pintos --fs-disk=10 -p tests/userprog/create-normal:create-normal -- -q -f run 'create-normal'
-# pintos --fs-disk=10 -p tests/userprog/read-normal:read-normal -p ../../tests/userprog/sample.txt:sample.txt -- -q   -f run read-normal
-# pintos --fs-disk=10 -p tests/userprog/close-twice:close-twice -p ../../tests/userprog/sample.txt:sample.txt -- -q   -f run close-twice
-# pintos --fs-disk=10 -p tests/userprog/fork-once:fork-once -- -q -f run fork-once
-# pintos  --fs-disk=10 -p tests/userprog/fork-multiple:fork-multiple -- -q -f run fork-multiple
-# pintos  --fs-disk=10 -p tests/userprog/fork-recursive:fork-recursive -- -q -f run fork-recursive
-# pintos  --fs-disk=10 -p tests/userprog/wait-killed:wait-killed -- -q -f run wait-killed
-pintos --fs-disk=10 -p tests/userprog/exec-once:exec-once -p tests/userprog/child-simple:child-simple -- -q -f run exec-once
+$DUP2_COMPLEX

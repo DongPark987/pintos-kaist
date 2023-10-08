@@ -41,11 +41,11 @@ static struct thread *initial_thread;
 /* Lock used by allocate_tid(). */
 static struct lock tid_lock;
 
-/* Thread destruction requests */
+/* Thread destruction requests. */
 static struct list destruction_req;
 
-/* Thread sleep requests */
-static struct list sleep_list; /* blocked */
+/* Thread sleep requests. */
+static struct list sleep_list;
 
 /* Statistics. */
 static long long idle_ticks;   /* g: num of timer ticks spent idle. */
@@ -56,9 +56,8 @@ static long long user_ticks;   /* g: num of timer ticks in user programs. */
 #define TIME_SLICE 4          /* m: num of timer ticks to give each thread. */
 static unsigned thread_ticks; /* g: num of timer ticks since last yield. */
 
+/* Multilevel feedback queue. */
 bool thread_mlfqs;
-
-/* for mlfqs */
 int ready_threads;
 int load_avg;
 static struct lock create_lock;
@@ -108,8 +107,9 @@ void thread_init(void) {
     list_init(&ready_list[i]);
   }
 
+  /* Init values for mlfqs. */
   load_avg = 0;
-  ready_threads = 1;  // main thread
+  ready_threads = 1;
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread();
@@ -119,6 +119,7 @@ void thread_init(void) {
     list_push_back(&all_thread, &initial_thread->a_elem);
   }
 
+  list_init(&initial_thread->children);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid();
 }
@@ -163,9 +164,10 @@ void thread_print_stats(void) {
          idle_ticks, kernel_ticks, user_ticks);
 }
 
-// * Create Thread
+/* Create a new thread. */
 tid_t thread_create(const char *name, int priority, thread_func *function,
                     void *aux) {
+  struct thread_child *child;
   struct thread *t;
   tid_t tid;
 
@@ -179,27 +181,31 @@ tid_t thread_create(const char *name, int priority, thread_func *function,
   init_thread(t, name, priority);
   tid = t->tid = allocate_tid();
 
-  /* Call the kernel_thread if it scheduled.
-   * Note) rdi is 1st argument, and rsi is 2nd argument. */
-  t->tf.rip = (uintptr_t)kernel_thread;  // kernel_thread function
-  t->tf.R.rdi = (uint64_t)function;      // function 을 실행해라
-  t->tf.R.rsi = (uint64_t)aux;           // aux 인자를 가지고
-  t->tf.ds = SEL_KDSEG;                  // kernel data segment selector
+  /* Call the kernel_thread if it scheduled. */
+  t->tf.rip = (uintptr_t)kernel_thread;
+  t->tf.R.rdi = (uint64_t)function;
+  t->tf.R.rsi = (uint64_t)aux;
+  t->tf.ds = SEL_KDSEG;
   t->tf.es = SEL_KDSEG;
   t->tf.ss = SEL_KDSEG;
   t->tf.cs = SEL_KCSEG;
   t->tf.eflags = FLAG_IF;
 
-  /* Add to All Thread List */
+  /* Add to all_thread list for mlfqs. */
   if (!list_find(&all_thread, &t->a_elem)) {
     list_push_back(&all_thread, &t->a_elem);
   }
 
+  /* Add to parent's child list. */
+  child = calloc(1, sizeof(struct thread_child));
+  child->tid = t->tid;
+  child->status = CHILD_BASE;
+  list_push_back(&thread_current()->children, &child->elem);
+
   /* Add to run queue. */
   thread_unblock(t);
 
-  /* 우선순위가 높은 스레드가 들어오면 양도합니다. 자기자신이 가장
-   * 우선순위가 높으면 context switching(thread_launch)이 발생하지 않습니다 */
+  /* Yield CPU if higher priority. */
   if (t->priority > thread_current()->priority) {
     thread_yield();
   }
@@ -207,7 +213,7 @@ tid_t thread_create(const char *name, int priority, thread_func *function,
   return tid;
 }
 
-/* 현재 스레드를 잠재운다 */
+/* Sleep current thread until WAKE_TICK. */
 void thread_sleep(uint64_t wake_tick) {
   struct thread *t;
   enum intr_level old_level;
@@ -218,8 +224,8 @@ void thread_sleep(uint64_t wake_tick) {
   old_level = intr_disable();
   t = thread_current();
 
+  /* Add to sleep queue. */
   if (t != idle_thread) {
-    /* sleep queue에 정렬해 삽입 */
     t->wake_tick = wake_tick;
     list_insert_ordered(&sleep_list, &t->elem, less_tick, NULL);
   }
@@ -228,7 +234,7 @@ void thread_sleep(uint64_t wake_tick) {
   intr_set_level(old_level);
 }
 
-/* check sleep queue */
+/* For every timer interrupt, check sleep queue and wake. */
 void thread_wake(uint64_t ticks) {
   ASSERT(intr_get_level() == INTR_OFF);
   ASSERT(intr_context());
@@ -299,7 +305,7 @@ struct thread *thread_current(void) {
 /* Returns the running thread's tid. */
 tid_t thread_tid(void) { return thread_current()->tid; }
 
-// * 스레드 삭제
+/* Terminate thread and add to destruction queue. */
 void thread_exit(void) {
   ASSERT(!intr_context());
 
@@ -318,7 +324,7 @@ void thread_exit(void) {
   NOT_REACHED();
 }
 
-// * CPU를 양도합니다
+/* Yield CPU. */
 void thread_yield(void) {
   struct thread *curr = thread_current();
   enum intr_level old_level;
@@ -335,19 +341,12 @@ void thread_yield(void) {
   intr_set_level(old_level);
 }
 
-// * current_thread의 recent_cpu를 1 올린다
+/* Increase current thread's recent cpu by 1. */
 void thread_incr_recent_cpu(void) {
   /* Update recent_cpu of curr thread */
   if (thread_current() != idle_thread) {
     thread_current()->recent_cpu = fix_add_int(thread_current()->recent_cpu, 1);
   }
-}
-
-// * iterate 인자로 전달할 내부 함수
-// TODO iterate 함수는 모으자
-void iterate_recent_cpu(struct list_elem *elem, void *aux UNUSED) {
-  struct thread *t = list_entry(elem, struct thread, a_elem);
-  set_recent_cpu(t);
 }
 
 // * Sets all threads' recent cpu
@@ -523,9 +522,9 @@ static void init_thread(struct thread *t, const char *name, int priority) {
   t->priority = thread_mlfqs ? calc_priority(t) : priority;
 
   /* for user process */
+  t->mode = KERN_TASK;
   t->parent = t == initial_thread ? NULL : thread_current();
-  //   list_init(&t->wait_children);
-  list_init(&t->exit_children);
+  list_init(&t->children);
   sema_init(&t->fork_sema, 0);
   sema_init(&t->wait_sema, 0);
 }
@@ -722,6 +721,12 @@ void thread_reorder(struct thread *t) {
   list_remove(&t->elem);
   list_insert_ordered(&ready_list[get_priority(t)], &t->elem, less_recent,
                       NULL);
+}
+
+/* Iterate list and recalculate recent cpu. */
+void iterate_recent_cpu(struct list_elem *elem, void *aux UNUSED) {
+  struct thread *t = list_entry(elem, struct thread, a_elem);
+  set_recent_cpu(t);
 }
 
 /* list comparison functions */
