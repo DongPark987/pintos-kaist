@@ -10,6 +10,8 @@ source ../../activate
 
 # pintos --fs-disk=10 -p tests/userprog/args-single:args-single -- -q -f run 'args-single onearg'
 # pintos --fs-disk=10 -p tests/userprog/open-missing:open-missing -- -q   -f run open-missing
+# pintos -v -k -T 60 -m 20   --fs-disk=10 -p tests/userprog/open-normal:open-normal -p ../../tests/userprog/sample.txt:sample.txt -- -q   -f run open-normal
+# pintos -v -k -T 60 -m 20   --fs-disk=10 -p tests/userprog/open-twice:open-twice -p ../../tests/userprog/sample.txt:sample.txt -- -q   -f run open-twice
 
 # pintos --fs-disk=10 -p tests/userprog/fork-once:fork-once -p ../../tests/userprog/sample.txt:sample.txt -- -q   -f run read-normal
 
@@ -20,4 +22,7 @@ source ../../activate
 # pintos -v -k -T 60 -m 20   --fs-disk=10 -p tests/userprog/exec-once:exec-once -p tests/userprog/child-simple:child-simple -- -q   -f run exec-once
 # pintos -v -k -T 60 -m 20   --fs-disk=10 -p tests/userprog/bad-write:bad-write -p tests/userprog/bad-write:bad-write -- -q   -f run bad-write
 
-pintos --fs-disk=10 -p tests/userprog/bad-write:bad-write -- -q   -f run bad-write
+# pintos --fs-disk=10 -p tests/userprog/no-vm/multi-oom:multi-oom -- -q   -f run multi-oom
+
+pintos -v -k -T 60 -m 20  --fs-disk=10 -p tests/userprog/fork-multiple:fork-multiple -- -q   -f run fork-multiple
+# pintos -v -k -T 60 -m 20   --fs-disk=10 -p tests/filesys/base/syn-write:syn-write -p tests/filesys/base/child-syn-wrt:child-syn-wrt -- -q   -f run syn-write

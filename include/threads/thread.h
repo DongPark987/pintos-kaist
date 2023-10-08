@@ -37,7 +37,11 @@ typedef int tid_t;
 #define PRI_MAX 63	   /* Highest priority. */
 
 /* file descriptor */
+#define MIN_FD 2
 #define MAX_FD 128
+
+/* Max Fork Count */
+#define MAX_DEPTH 28
 
 /* A kernel thread or user process.
  *
@@ -135,7 +139,7 @@ struct thread
 	struct thread *parent; // 부모 프로세스의 스레드
 	struct list children; // 자식 프로세스
 
-
+	int fork_depth;
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4; /* Page map level 4 (페이지 디렉터리 포인터 테이블의 위치를 나타냄. 가상 메모리 주소와 물리 메모리 주소 간의 매핑을 조직화함) */

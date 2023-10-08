@@ -727,6 +727,8 @@ init_thread(struct thread *t, const char *name, int priority)
 	for (int i = 0; i < 64; i++)
 		t->donation_list[i] = 0;
 
+	t->fork_depth = 0;
+	t->exe = NULL;
 	sema_init(&t->fork_sema, 0);
 	sema_init(&t->wait_sema, 0);
 	list_init(&t->children);

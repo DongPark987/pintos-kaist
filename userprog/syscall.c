@@ -70,6 +70,7 @@ void syscall_handler(struct intr_frame *f UNUSED)
     f->R.rax = create(f->R.rdi, f->R.rsi);
     break;
   case SYS_REMOVE:
+    f->R.rax = remove(f->R.rdi);
     break;
   case SYS_OPEN:
     f->R.rax = open(f->R.rdi);
@@ -116,11 +117,6 @@ Conventionally, a status of 0 indicates success and nonzero values indicate erro
 */
 void exit(int status)
 {
-  // TODO: Exiting a process implicitly closes all its open file descriptors
-  // for (int fd = 0; fd < MAX_FD; fd++)
-  // {
-  //     close(fd);
-  // }
 
   thread_current()->tf.R.rdi = status;
   thread_exit();
@@ -163,10 +159,10 @@ int open(const char *file)
   struct file *opened_file = filesys_open(file);
   if (opened_file == NULL)
     return -1;
-  thread_current()->fd_cnt++;
+
   thread_current()->fdt[thread_current()->fd_cnt] = opened_file;
 
-  return thread_current()->fd_cnt;
+  return thread_current()->fd_cnt++;
 }
 
 /*
@@ -180,7 +176,7 @@ void close(int fd)
   {
     file_close(thread_current()->fdt[fd]);
     thread_current()->fdt[fd] = NULL;
-    thread_current()->fd_cnt--;
+    // thread_current()->fd_cnt--;
   }
 }
 
@@ -287,4 +283,8 @@ int exec(const char *cmd_line)
   if (result == -1)
     exit(-1);
   return result;
+}
+
+bool remove (const char *file) {
+  return filesys_remove(file);
 }

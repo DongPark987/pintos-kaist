@@ -35,7 +35,7 @@ static void process_init(void)
 {
 	struct thread *current = thread_current();
 
-	current->fdt = palloc_get_page(0);
+	current->fdt = palloc_get_page(PAL_ZERO);
 	current->fd_cnt = 2;
 }
 
@@ -83,6 +83,8 @@ static void initd(void *f_name)
  * TID_ERROR if the thread cannot be created. */
 tid_t process_fork(const char *name, struct intr_frame *if_ UNUSED)
 {
+	if (thread_current()->fork_depth == MAX_DEPTH)
+		return TID_ERROR;
 	/* Clone current thread to new thread.*/
 	memcpy(&global_if, if_, sizeof(struct intr_frame));
 	tid_t tid = thread_create(name, PRI_DEFAULT, __do_fork, thread_current());
@@ -169,17 +171,18 @@ static void __do_fork(void *aux)
 	 * TODO:       the resources of parent.*/
 	process_init();
 
-	for (int i = 0; i <= MAX_FD; i++)
+	for (int i = MIN_FD; i < MAX_FD; i++)
 	{
 		if (parent->fdt[i] != NULL)
 			current->fdt[i] = file_duplicate(parent->fdt[i]);
 	}
 	current->fd_cnt = parent->fd_cnt;
+	current->fork_depth = parent->fork_depth + 1;
 
 	/* Finally, switch to the newly created process. */
+	sema_up(&parent->fork_sema);
 	if (succ)
 	{
-		sema_up(&parent->fork_sema);
 		do_iret(&if_);
 	}
 error:
@@ -218,7 +221,7 @@ int process_exec(void *f_name)
 
 	char *file_name = f_name;
 
-	file_name = palloc_get_page(0);
+	file_name = palloc_get_page(PAL_ZERO);
 	if (file_name == NULL)
 		return TID_ERROR;
 	strlcpy(file_name, f_name, PGSIZE);
@@ -241,7 +244,7 @@ int process_exec(void *f_name)
 
 	/* If load failed, quit. */
 	palloc_free_page(file_name);
-	if (!success) 
+	if (!success)
 		return -1;
 
 	/* Start switched process. */
@@ -306,11 +309,35 @@ void process_exit(void)
 	{
 		printf("%s: exit(%d)\n", curr->name, curr->tf.R.rdi);
 	}
-	palloc_free_page(curr->fdt);
+
+	while (!list_empty(&curr->children))
+	{
+		struct list_elem *front = list_pop_front(&curr->children);
+		struct child_process *child = list_entry(front, struct child_process, elem);
+		free(child);
+	}
+
+	if (curr->fdt != NULL)
+	{
+		for (int i = MIN_FD; i < MAX_FD; i++)
+		{
+			if (curr->fdt[i] != NULL)
+			{
+				file_close(curr->fdt[i]);
+				curr->fdt[i] = NULL;
+			}
+		}
+
+		palloc_free_page(curr->fdt);
+	}
+
 	process_cleanup();
+	if (curr->exe != NULL) {
+		file_close(curr->exe);
+		curr->exe = NULL;
+	}
 	if (&curr->parent != NULL)
 		sema_up(&curr->parent->wait_sema);
-	file_close(curr->exe);
 }
 
 /* Free the current process's resources. */
