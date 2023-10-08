@@ -444,7 +444,14 @@ void thread_exit(void)
 		if (found != NULL)
 		{
 			found->status = PROCESS_EXIT;
-			found->return_value = curr->tf.R.rdi;
+			if (curr->exit_status == NULL)
+			{
+				found->return_value = curr->tf.R.rdi;
+			}
+			else
+			{
+				found->return_value = curr->exit_status;
+			}
 		}
 	}
 
@@ -729,6 +736,7 @@ init_thread(struct thread *t, const char *name, int priority)
 
 	t->fork_depth = 0;
 	t->exe = NULL;
+	t->exit_status = NULL;
 	sema_init(&t->fork_sema, 0);
 	sema_init(&t->wait_sema, 0);
 	list_init(&t->children);

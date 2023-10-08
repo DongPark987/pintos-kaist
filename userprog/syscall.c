@@ -119,6 +119,7 @@ void exit(int status)
 {
 
   thread_current()->tf.R.rdi = status;
+  thread_current()->exit_status = status;
   thread_exit();
 }
 
@@ -285,6 +286,7 @@ int exec(const char *cmd_line)
   return result;
 }
 
-bool remove (const char *file) {
+bool remove(const char *file)
+{
   return filesys_remove(file);
 }
