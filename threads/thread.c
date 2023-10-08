@@ -287,6 +287,8 @@ tid_t thread_create(const char *name, int priority,
 
 	/* Call the kernel_thread if it scheduled.
 	 * Note) rdi is 1st argument, and rsi is 2nd argument. */
+	/* 커널 스레드를 호출합니다. 스케줄링되어야 합니다.
+	 * 참고) rdi는 첫 번째 인수이고, rsi는 두 번째 인수입니다. */
 	t->tf.rip = (uintptr_t)kernel_thread;
 	t->tf.R.rdi = (uint64_t)function;
 	t->tf.R.rsi = (uint64_t)aux;
@@ -297,6 +299,13 @@ tid_t thread_create(const char *name, int priority,
 	t->tf.eflags = FLAG_IF;
 
 	/* Add to run queue. */
+	t->parent = thread_current();
+	struct child_info *child_info = malloc(sizeof(struct child_info));
+	child_info->pid = t->tid;
+	child_info->status = CHILD_RUNNING;
+	/* 부모에게 알리는 자신의 상태 정보 연결 */
+	t->child_info = child_info;
+	list_push_back(&t->parent->child_list, &child_info->child_elem);
 	thread_unblock(t);
 	thread_yield();
 	return tid;
@@ -696,6 +705,15 @@ init_thread(struct thread *t, const char *name, int priority)
 	t->donation_cnt = 0;
 	for (int i = 0; i < 64; i++)
 		t->donation_list[i] = 0;
+
+	/* fork용 변수 초기화 */
+	sema_init(&t->fork_sema, 0);
+	sema_init(&t->wait_sema, 0);
+	list_init(&t->child_list);
+	t->fork_depth = 0;
+	t->exe_file = NULL;
+	t->parent = NULL;
+	t->is_kernel = 1;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

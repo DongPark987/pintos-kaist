@@ -5,6 +5,9 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
+#include "filesys/file.h"
+#include "filesys/filesys.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -16,6 +19,12 @@ enum thread_status
 	THREAD_READY,	/* Not running but ready to run. */
 	THREAD_BLOCKED, /* Waiting for an event to trigger. */
 	THREAD_DYING	/* About to be destroyed. */
+};
+
+enum child_status
+{
+	CHILD_RUNNING, /* Running thread. */
+	CHILD_EXIT	/* Not running but ready to run. */
 };
 
 /* Thread identifier type.
@@ -93,11 +102,10 @@ struct thread
 	char name[16];			   /* Name (for debugging purposes). */
 	int priority;			   /* Priority. */
 
-	
 	int8_t donation_list[64]; /* 도네이션 리스트 */
 	int donation_cnt;
 
-	struct lock * wait_on_lock;
+	struct lock *wait_on_lock;
 	int nice;
 	int64_t wake_tick;
 	/* Shared between thread.c and synch.c. */
@@ -108,20 +116,41 @@ struct thread
 	/* recent_cpu */
 	int recent_cpu;
 
-// #ifdef USERPROG
+	/* fork 구현 변수 */
+	struct semaphore fork_sema; // 끝
+	struct semaphore wait_sema;
+	struct list child_list; // 끝
+	struct thread *parent;	// 끝
+	struct child_info *child_info;
+	struct file* exe_file;
+	int fork_depth;
+	uint8_t is_kernel;
+	int exit_code;
+
+	// #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4; /* Page map level 4 */
-	struct file **fdt;
+	struct file_fd *fdt;
 	uint8_t fd_cnt;
 // #endif
 #ifdef VM
-  /* Table for whole virtual memory owned by thread. */
-  struct supplemental_page_table spt;
+	/* Table for whole virtual memory owned by thread. */
+	struct supplemental_page_table spt;
 #endif
-
 	/* Owned by thread.c. */
 	struct intr_frame tf; /* Information for switching */
+	struct intr_frame fork_tf; /* Information for fork */
+	
 	unsigned magic;		  /* Detects stack overflow. */
+};
+
+/* 자식 관리 구조체 */
+struct child_info
+{
+	tid_t pid;
+	int ret;
+	enum child_status status;
+	struct list_elem child_elem;
 };
 
 /* If false (default), use round-robin scheduler.
@@ -165,7 +194,6 @@ void do_iret(struct intr_frame *tf);
 bool cmp_wake_tick(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 void thread_sleep(int64_t ticks);
 void thread_wake(int64_t ticks);
-
 
 /*
 	priority

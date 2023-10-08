@@ -3,6 +3,14 @@
 
 #include "threads/thread.h"
 
+
+/* Max file descriptor */
+#define MAX_FD 500
+#define MIN_FD 4
+#define STDIN_FILENO 0
+#define STDOUT_FILENO 1
+
+
 tid_t process_create_initd (const char *file_name);
 tid_t process_fork (const char *name, struct intr_frame *if_);
 int process_exec (void *f_name);

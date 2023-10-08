@@ -2,12 +2,14 @@
 #include <debug.h>
 #include "filesys/inode.h"
 #include "threads/malloc.h"
+#include "threads/synch.h"
 
 /* An open file. */
 struct file {
 	struct inode *inode;        /* File's inode. */
 	off_t pos;                  /* Current position. */
 	bool deny_write;            /* Has file_deny_write() been called? */
+	int open_cnt;
 };
 
 /* Opens a file for the given INODE, of which it takes ownership,
@@ -20,6 +22,7 @@ file_open (struct inode *inode) {
 		file->inode = inode;
 		file->pos = 0;
 		file->deny_write = false;
+		file->open_cnt = 1;
 		return file;
 	} else {
 		inode_close (inode);
@@ -42,6 +45,8 @@ file_duplicate (struct file *file) {
 	struct file *nfile = file_open (inode_reopen (file->inode));
 	if (nfile) {
 		nfile->pos = file->pos;
+		/* dup2 횟수 복사 */
+		nfile->open_cnt = file->open_cnt;
 		if (file->deny_write)
 			file_deny_write (nfile);
 	}
@@ -123,6 +128,26 @@ file_deny_write (struct file *file) {
 		inode_deny_write (file->inode);
 	}
 }
+
+/* 파일에 write 가능 여부 체크 */
+int
+file_is_deny(struct file *file){
+	return file->deny_write;
+}
+
+int file_inc_open_cnt(struct file *file){
+	return ++file->open_cnt;
+}
+
+int file_dec_open_cnt(struct file *file){
+	return --file->open_cnt;
+}
+
+
+struct lock *file_get_inode_lock(struct file *file){
+	return get_inod_loc(file->inode);
+}
+
 
 /* Re-enables write operations on FILE's underlying inode.
  * (Writes might still be denied by some other file that has the
