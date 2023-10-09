@@ -8,6 +8,7 @@ struct inode;
 
 struct file_fd
 {
+    int stdio;
     int dup2_num;
     void * file;
 };

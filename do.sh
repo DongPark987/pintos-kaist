@@ -23,10 +23,11 @@ source ../../activate
 # pintos --fs-disk=10 -p tests/userprog/exec-once:exec-once -p tests/userprog/child-simple:child-simple -- -q   -f run exec-once
 # pintos --fs-disk=10 -p tests/filesys/base/syn-read:syn-read -p tests/filesys/base/child-syn-read:child-syn-read -- -q   -f run syn-read
 # pintos --fs-disk=10 -p tests/filesys/base/syn-read:syn-read -p tests/filesys/base/child-syn-read:child-syn-read -- -q   -f run syn-read
-pintos --fs-disk=10 -p tests/userprog/no-vm/multi-oom:multi-oom -- -q   -f run multi-oom
+# pintos --fs-disk=10 -p tests/userprog/no-vm/multi-oom:multi-oom -- -q   -f run multi-oom
 # pintos --fs-disk=10 -p tests/userprog/bad-write:bad-write -p tests/userprog/bad-write:bad-write -- -q   -f run bad-write
 
-# pintos  --fs-disk=10 -p tests/userprog/dup2/dup2-complex:dup2-complex -p ../../tests/userprog/dup2/sample.txt:sample.txt -- -q   -f run dup2-complex
+pintos  --fs-disk=10 -p tests/userprog/dup2/dup2-complex:dup2-complex -p ../../tests/userprog/dup2/sample.txt:sample.txt -- -q   -f run dup2-complex
 # pintos  --fs-disk=10 -p tests/userprog/dup2/dup2-simple:dup2-simple -p ../../tests/userprog/dup2/sample.txt:sample.txt -- -q   -f run dup2-simple
 
 # pintos -v -k -T 60 -m 20   --fs-disk=10 -p tests/userprog/fork-multiple:fork-multiple -- -q   -f run fork-multiple
+# pintos  --fs-disk=10 -p tests/userprog/read-stdout:read-stdout -- -q   -f run read-stdout

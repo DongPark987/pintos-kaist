@@ -38,9 +38,9 @@ static void
 process_init(void)
 {
 	struct thread *current = thread_current();
-	current->fdt = palloc_get_multiple(PAL_ZERO, 2);
-	// current->fdt[0].file = -1;
-	// current->fdt[1].file = -2;
+	current->fdt = palloc_get_multiple(PAL_ZERO, 3);
+	current->fdt[0].stdio = 1;
+	current->fdt[1].stdio = 2;
 	current->fd_cnt = 0;
 	current->is_kernel = 0;
 }
@@ -222,13 +222,39 @@ __do_fork(void *aux)
 	process_init();
 	/* Finally, switch to the newly created process. */
 	struct file **tmp_fdt = palloc_get_page(PAL_ZERO);
-	for (int i = MIN_FD; i < MAX_FD; i++)
-	{
-		if (parent->fdt[i].file != NULL)
-		{
 
-			tmp_fdt[i] = file_duplicate(parent->fdt[i].file);
-			current->fdt[i].file = tmp_fdt[i];
+	current->fdt[0].stdio = 0;
+	current->fdt[1].stdio = 0;
+
+	for (int i = 0; i < MAX_FD; i++)
+	{
+		// 표준 입출력 복사
+		if (parent->fdt[i].stdio != 0)
+		{
+			current->fdt[i].stdio = parent->fdt[i].stdio;
+			continue;
+		}
+
+		// child의 파일이 이미 세팅 되어 있는경우 건너뛴다.
+		if (parent->fdt[i].dup2_num != 0 && current->fdt[i].file != NULL)
+		{
+			struct file *dup_file = file_duplicate(parent->fdt[i].file);
+			for (int j = i; j < MAX_FD; j++)
+			{
+				// 현재 file i 가 순회중인 j와 같은 경우에만 current에게 파일 세팅
+				if (parent->fdt[j].file == parent->fdt[i].file)
+				{
+					current->fdt[j].file = dup_file;
+					current->fdt[j].dup2_num = 1;
+				}
+			}
+		}
+		else
+		{
+			// 표준입출력도 아니고 dup2도 아니고 파일이 열려 있는경우 복사
+			if (parent->fdt[i].file != NULL)
+				current->fdt[i].file = file_duplicate(parent->fdt[i].file);
+
 		}
 	}
 	// for (int i = MIN_FD; i < MAX_FD; i++)
@@ -248,7 +274,7 @@ __do_fork(void *aux)
 	// for (int i = MIN_FD; i < MAX_FD; i++)
 	// {
 
-	// 	if (parent->fdt[i].dup2_num == 0 && parent->fdt[i].file!=NULL)
+	// 	if (parent->fdt[i].dup2_num == 0 && parent->fdt[i].file != NULL)
 	// 		current->fdt[i].file = tmp_fdt[i];
 	// 	else
 	// 	{
@@ -424,8 +450,9 @@ void process_exit(void)
 	if (!curr->is_kernel)
 	{
 
-		for (int i = MIN_FD; i < MAX_FD; i++)
+		for (int i = 0; i < MAX_FD; i++)
 		{
+
 			if (curr->fdt[i].file != NULL)
 			{
 				int open_cnt = file_dec_open_cnt(curr->fdt[i].file);
@@ -436,7 +463,7 @@ void process_exit(void)
 
 		if (curr->fdt != NULL)
 		{
-			palloc_free_page(curr->fdt);
+			palloc_free_multiple(curr->fdt, 3);
 			curr->fdt = NULL;
 		}
 

@@ -87,6 +87,15 @@ static int find_free_fd(struct thread *cur_t)
 	return -1;
 }
 
+int is_std_io_open(int fd)
+{
+	struct thread *curr = thread_current();
+	if (curr->fdt[fd].file == 1)
+		return fd;
+	else
+		return 0;
+}
+
 int fd_open(char *str)
 {
 	struct thread *curr = thread_current();
@@ -96,7 +105,7 @@ int fd_open(char *str)
 	int fd = find_free_fd(curr);
 	if (fd == -1)
 		return -1;
-	f = filesys_open(str); 
+	f = filesys_open(str);
 	if (f == NULL)
 		return -1;
 	curr->fdt[fd].file = f;
@@ -104,59 +113,94 @@ int fd_open(char *str)
 	return fd;
 }
 
-int fd_close(int fd)
+void fd_close(int fd)
 {
 	struct thread *curr = thread_current();
+
+	/* 유효하지 않은 fd */
+	if (fd < 0)
+		return;
+
+	/* 표준 입출력 fd 닫기 */
+	if (curr->fdt[fd].stdio != 0)
+	{
+		curr->fdt[fd].stdio = 0;
+		return;
+	}
+
+	/* 사용되지 않은 fd */
 	if (curr->fdt[fd].file == 0)
-		return -1;
+		return;
+
 	int open_cnt = file_dec_open_cnt(curr->fdt[fd].file);
 	if (open_cnt == 0)
-	{
 		file_close(curr->fdt[fd].file);
-	}
+
 	curr->fdt[fd].file = 0;
 	curr->fdt[fd].dup2_num = 0;
+	curr->fdt[fd].stdio = 0;
 	curr->fd_cnt--;
 }
 
-int fd_read(int fd, char *buffer, size_t size)
+int fd_read(int fd, void *buffer, size_t size)
 {
-	struct thread *cur_t = thread_current();
-	off_t read_size = 0;
-	if (fd == STDIN_FILENO)
-		return input_getc();
-	if (cur_t->fdt[fd].file == NULL)
+	struct thread *curr = thread_current();
+	/* 유효하지 않은 fd */
+	if (fd < 0)
 		return -1;
-	// lock_acquire(file_get_inode_lock(cur_t->fdt[fd]));
-	read_size = file_read(cur_t->fdt[fd].file, buffer, size);
-	// lock_release(file_get_inode_lock(cur_t->fdt[fd]));
+
+	/* 표준 입출력 fd 읽기 */
+	if (curr->fdt[fd].stdio != 0)
+	{
+		if (curr->fdt[fd].stdio == STDIN_FILENO)
+			return input_getc();
+		return -1;
+	}
+
+	off_t read_size = 0;
+
+	if (curr->fdt[fd].file == NULL)
+		return -1;
+	lock_acquire(file_get_inode_lock(curr->fdt[fd].file));
+	read_size = file_read(curr->fdt[fd].file, buffer, size);
+	lock_release(file_get_inode_lock(curr->fdt[fd].file));
 	return read_size;
 }
 
 int fd_file_size(int fd)
 {
+	if (fd < 0)
+		return 0;
 	struct thread *cur_t = thread_current();
 	return file_length(cur_t->fdt[fd].file);
 }
 
 int fd_write(int fd, char *buffer, unsigned size)
 {
-	struct thread *cur_t = thread_current();
+	struct thread *curr = thread_current();
 	off_t write_size = 0;
 
-	if (fd == STDOUT_FILENO)
+	/* 유효하지 않은 fd */
+	if (fd < 0)
+		return 0;
+
+	if (curr->fdt[fd].stdio != 0)
 	{
-		putbuf(buffer, size);
-		return size;
+		if (curr->fdt[fd].stdio == STDOUT_FILENO)
+		{
+			putbuf(buffer, size);
+			return size;
+		}
+		return 0;
 	}
 
-	if (file_is_deny(cur_t->fdt[fd].file) || cur_t->fdt[fd].file == NULL)
+	if (file_is_deny(curr->fdt[fd].file) || curr->fdt[fd].file == NULL)
 		return 0;
 	else
 	{
-		// lock_acquire(file_get_inode_lock(cur_t->fdt[fd]));
-		write_size = file_write(cur_t->fdt[fd].file, buffer, size);
-		// lock_release(file_get_inode_lock(cur_t->fdt[fd]));
+		lock_acquire(file_get_inode_lock(curr->fdt[fd].file));
+		write_size = file_write(curr->fdt[fd].file, buffer, size);
+		lock_release(file_get_inode_lock(curr->fdt[fd].file));
 		return write_size;
 	}
 }
@@ -181,6 +225,13 @@ int exec(const char *cmd_line)
 void fd_seek(int fd, unsigned position)
 {
 	struct thread *curr = thread_current();
+
+	if (fd < 0)
+		return;
+
+	if (curr->fdt[fd].stdio != 0)
+		return;
+
 	if (curr->fdt[fd].file == NULL)
 		return;
 	file_seek(curr->fdt[fd].file, position);
@@ -189,26 +240,55 @@ void fd_seek(int fd, unsigned position)
 int dup2(int oldfd, int newfd)
 {
 	struct thread *curr = thread_current();
-
-	if (curr->fdt[oldfd].file == 0)
+	// printf("%d를 %d로 덥트한다.\n",newfd,oldfd);
+	// 둘중 하나라도 유효하지 않은 fd면 실패
+	if (oldfd < 0 || newfd < 0)
 		return -1;
-	
-	if (curr->fdt[newfd].file = curr->fdt[oldfd].file)
-		return newfd;
 
-	if (curr->fdt[newfd].file != 0)
+	/* 표준 입출력 dup */
+	if (curr->fdt[oldfd].stdio != 0)
 	{
-		file_close(newfd);
-		curr->fdt[newfd].file = curr->fdt[oldfd].file;
-		file_inc_open_cnt(curr->fdt[newfd].file);
+		// 표준 입출력이며 fd가 같으면 그냥 반환
+		if (newfd == oldfd)
+			return newfd;
+
+		// new가 표준 입출력이거나 파일이 열려 있는 상태라면 close
+		if (curr->fdt[newfd].stdio != 0 || curr->fdt[newfd].file != NULL)
+			fd_close(newfd);
+
+		// 표준 입출력 fd로 변환
+		curr->fdt[newfd].stdio = curr->fdt[oldfd].stdio;
+		curr->fdt[newfd].dup2_num = 0;
+
 		return newfd;
 	}
 
+	//oldfd가 닫혀있으면 실패
+	if (curr->fdt[oldfd].file == 0)
+		return -1;
+
+	//유효한데 같은 fd면 그냥 반환
+	if (newfd == oldfd)
+		return newfd;
+
+	//열려 있으면 닫는다.
+	if (curr->fdt[newfd].file != 0)
+		fd_close(newfd);
+		
+	
 
 	curr->fdt[newfd].file = curr->fdt[oldfd].file;
-	curr->fdt[newfd].dup2_num = oldfd;
+	curr->fdt[newfd].dup2_num = 1;
+	curr->fdt[newfd].stdio = 0;
 	file_inc_open_cnt(curr->fdt[newfd].file);
 	return newfd;
+}
+
+unsigned fd_tell (int fd){
+	struct thread *curr = thread_current();
+	if(curr->fdt[fd].file==0)
+		return 0;
+	return file_tell(curr->fdt[fd].file);
 }
 
 /* The main system call interface */
@@ -254,9 +334,10 @@ void syscall_handler(struct intr_frame *f UNUSED)
 		fd_seek(f->R.rdi, f->R.rsi);
 		break;
 	case SYS_TELL:
+		f->R.rax = fd_tell (f->R.rdi);
 		break;
 	case SYS_CLOSE:
-		f->R.rax = fd_close(f->R.rdi);
+		fd_close(f->R.rdi);
 		break;
 
 	case SYS_DUP2:

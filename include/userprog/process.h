@@ -7,8 +7,8 @@
 /* Max file descriptor */
 #define MAX_FD 500
 #define MIN_FD 4
-#define STDIN_FILENO 0
-#define STDOUT_FILENO 1
+#define STDIN_FILENO 1
+#define STDOUT_FILENO 2
 
 
 tid_t process_create_initd (const char *file_name);
