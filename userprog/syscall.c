@@ -31,6 +31,8 @@ void syscall_handler(struct intr_frame *);
 #define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
 
+static struct semaphore sys_sema;
+
 void syscall_init(void)
 {
   write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48 |
@@ -42,6 +44,7 @@ void syscall_init(void)
    * mode stack. Therefore, we masked the FLAG_FL. */
   write_msr(MSR_SYSCALL_MASK,
             FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
+  sema_init(&sys_sema, 1);
 }
 
 /* The main system call interface */
@@ -117,7 +120,6 @@ Conventionally, a status of 0 indicates success and nonzero values indicate erro
 */
 void exit(int status)
 {
-
   thread_current()->tf.R.rdi = status;
   thread_current()->exit_status = status;
   thread_exit();
@@ -157,12 +159,16 @@ int open(const char *file)
 {
   if (file == NULL)
     exit(-1);
+  sema_down(&sys_sema);
   struct file *opened_file = filesys_open(file);
   if (opened_file == NULL)
+  {
+    sema_up(&sys_sema);
     return -1;
+  }
 
   thread_current()->fdt[thread_current()->fd_cnt] = opened_file;
-
+  sema_up(&sys_sema);
   return thread_current()->fd_cnt++;
 }
 
@@ -195,7 +201,11 @@ int read(int fd, void *buffer, unsigned size)
   if (fd == 0)
     return input_getc();
 
-  return file_read(thread_current()->fdt[fd], buffer, size);
+  sema_down(&sys_sema);
+  int bytes = file_read(thread_current()->fdt[fd], buffer, size);
+  sema_up(&sys_sema);
+
+  return bytes;
 }
 
 /*
@@ -234,13 +244,17 @@ Returns the number of bytes actually written, which may be less than size if som
 */
 int write(int fd, const void *buffer, unsigned size)
 {
+  sema_down(&sys_sema);
   if (fd == 1)
   {
     putbuf(buffer, size);
+    sema_up(&sys_sema);
     return size;
   }
 
-  return file_write(thread_current()->fdt[fd], buffer, size);
+  int bytes = file_write(thread_current()->fdt[fd], buffer, size);
+  sema_up(&sys_sema);
+  return bytes;
 }
 
 /*
