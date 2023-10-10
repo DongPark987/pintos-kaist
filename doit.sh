@@ -87,4 +87,4 @@ make
 cd build
 source ../../activate
 
-$DUP2_COMPLEX
+$MULTI_OOM

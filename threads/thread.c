@@ -198,6 +198,12 @@ tid_t thread_create(const char *name, int priority, thread_func *function,
 
   /* Add to parent's child list. */
   child = calloc(1, sizeof(struct thread_child));
+  if (child == NULL) {
+    palloc_free_page(t);
+    return TID_ERROR;
+  }
+
+  child->addr = t;
   child->tid = t->tid;
   child->status = CHILD_BASE;
   list_push_back(&thread_current()->children, &child->elem);
@@ -308,14 +314,13 @@ tid_t thread_tid(void) { return thread_current()->tid; }
 /* Terminate thread and add to destruction queue. */
 void thread_exit(void) {
   ASSERT(!intr_context());
+  /* Just set our status to dying and schedule another process.
+    We will be destroyed during the call to schedule_tail(). */
+  intr_disable();
 
 #ifdef USERPROG
   process_exit();
 #endif
-
-  /* Just set our status to dying and schedule another process.
-     We will be destroyed during the call to schedule_tail(). */
-  intr_disable();
 
   ready_threads--;
   list_remove(list_find(&all_thread, &thread_current()->a_elem));
@@ -461,11 +466,20 @@ int get_recent_cpu(struct thread *t) {
 static void idle(void *idle_started_ UNUSED) {
   struct semaphore *idle_started = idle_started_;
 
+  /* Init idle_thread. */
   idle_thread = thread_current();
+
   ready_threads--;  // idle_thread는 cnt에서 제외한다
   if (thread_mlfqs) {
     list_remove(&idle_thread->a_elem);
   }
+
+  /* Free thread_child from main's child list. */
+  struct thread_child *idle_thread_child =
+      thread_get_child(&idle_thread->parent->children, idle_thread->tid);
+  list_remove(&idle_thread_child->elem);
+  free(idle_thread_child);
+
   sema_up(idle_started);
 
   for (;;) {
@@ -721,6 +735,22 @@ void thread_reorder(struct thread *t) {
   list_remove(&t->elem);
   list_insert_ordered(&ready_list[get_priority(t)], &t->elem, less_recent,
                       NULL);
+}
+
+/* Search for child by tid in parent's chlid list.
+ * Used for thread fork & wait.
+ */
+struct thread_child *thread_get_child(struct list *list, tid_t tid) {
+  struct list_elem *curr_elem;
+  struct thread_child *curr;
+  for (curr_elem = list_begin(list); curr_elem != list_end(list);
+       curr_elem = list_next(curr_elem)) {
+    curr = list_entry(curr_elem, struct thread_child, elem);
+    if (curr->tid == tid) {
+      return curr;
+    }
+  }
+  return NULL;
 }
 
 /* Iterate list and recalculate recent cpu. */

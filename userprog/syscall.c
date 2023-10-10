@@ -79,7 +79,7 @@ void exit(int status) {
 
 /* Create a new file. */
 bool create(const char *file, unsigned initial_size) {
-  if (file == NULL) exit(-1);  // 잘못된 포인터인 경우 즉시 종료
+  if (file == NULL) exit(-1);
   return filesys_create(file, initial_size);
 }
 
@@ -89,9 +89,14 @@ int open(const char *file_name) {
   struct thread *curr = thread_current();
 
   int fd = allocate_fd();
+  if (!is_valid_fd(fd)) return -1;
+
   struct file *file = filesys_open(file_name);
 
-  if (!is_valid_fd(fd) || file == NULL) return -1;
+  if (file == NULL) {
+    free_fd(fd);
+    return -1;
+  }
   curr->fdt[fd] = file;
 
   return fd;
@@ -125,8 +130,8 @@ void close(int fd) {
     return;
   }
 
-  file_close(file);
   free_fd(fd);
+  file_close(file);
 }
 
 /* Read from file to buffer. */
@@ -186,15 +191,15 @@ int dup2(int oldfd, int newfd) {
   if (oldfd == newfd) return newfd;
   if (fdt[oldfd] == NULL) return -1;
 
+  /* If newfd already has a file, close. */
+  if (fdt[newfd]) {
+    close(newfd);
+  }
+
   /* If standard i/o, just copy value. */
   if (is_file_std(fdt[oldfd])) {
     fdt[newfd] = fdt[oldfd];
     return newfd;
-  }
-
-  /* If newfd already has a file, close. */
-  if (fdt[newfd]) {
-    close(newfd);
   }
 
   /* Duplicate file descriptor. */
@@ -254,13 +259,17 @@ void seek(int fd, unsigned position) {
 
 /* Tell file. */
 unsigned tell(int fd) {
-  if (!is_valid_fd(fd)) return;
+  if (!is_valid_fd(fd)) return -1;
   struct file **fdt = thread_current()->fdt;
+  unsigned rtn;
 
-  if (fdt[fd] == NULL) return;
-  if (is_file_std(fdt[fd])) return;
+  if (fdt[fd] == NULL) return -1;
+  if (is_file_std(fdt[fd])) return -1;
 
-  return file_tell(fdt[fd]);
+  lock_acquire(file_inode_lock(fdt[fd]));
+  rtn = file_tell(fdt[fd]);
+  lock_release(file_inode_lock(fdt[fd]));
+  return rtn;
 }
 
 /* The main system call interface */
@@ -331,7 +340,6 @@ void syscall_handler(struct intr_frame *f) {
   }
 }
 
-// TODO: linked-list로?
 /* Get freed file descriptor */
 static int allocate_fd() {
   struct thread *curr = thread_current();

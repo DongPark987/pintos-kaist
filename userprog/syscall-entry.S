@@ -4,12 +4,16 @@
 .globl syscall_entry
 .type syscall_entry, @function
 syscall_entry:
-	movq %rbx, temp1(%rip)
+
+    /* Switch from user stack to kernel stack. */
+    /* RIP relative addressing. */
+	movq %rbx, temp1(%rip)     /* %rbx, %r12를 temp1, temp2에 백업 */
 	movq %r12, temp2(%rip)     /* callee saved registers */
 	movq %rsp, %rbx            /* Store userland rsp    */
-	movabs $tss, %r12
-	movq (%r12), %r12
+	movabs $tss, %r12          /* Store tss address */
+	movq (%r12), %r12          /* Store tss */
 	movq 4(%r12), %rsp         /* Read ring0 rsp from the tss */
+
 	/* Now we are in the kernel stack */
 	push $(SEL_UDSEG)      /* if->ss */
 	push %rbx              /* if->rsp */
@@ -20,9 +24,9 @@ syscall_entry:
 	push $(SEL_UDSEG)      /* if->ds */
 	push $(SEL_UDSEG)      /* if->es */
 	push %rax
-	movq temp1(%rip), %rbx
+	movq temp1(%rip), %rbx /* restore rbx */
 	push %rbx
-	pushq $0
+	pushq $0               /* skip rcx */
 	push %rdx
 	push %rbp
 	push %rdi
@@ -30,20 +34,22 @@ syscall_entry:
 	push %r8
 	push %r9
 	push %r10
-	pushq $0 /* skip r11, since it store RFLAG info */
+	pushq $0               /* skip r11, since it store RFLAG info */
 	movq temp2(%rip), %r12
 	push %r12
 	push %r13
 	push %r14
 	push %r15
-	movq %rsp, %rdi
+	movq %rsp, %rdi        /* set intr_frame struct as arg of syscall handler */
 
+/* recover interrupt status */
 check_intr:
 	btsq $9, %r11          /* Check whether we recover the interrupt
                               btsq 는 if를 1로 설정하고, 원래 값을 CF 에 저장한다 */
 	jnb no_sti             /* jnb는 CF를 검사하여 0이면 no_sti로 jump,
                               아니면 sti로 jump한다 */
 	sti                    /* restore interrupt */
+
 no_sti:
 	movabs $syscall_handler, %r12
 	call *%r12
@@ -62,9 +68,9 @@ no_sti:
 	popq %rcx
 	popq %rbx
 	popq %rax
-	addq $32, %rsp
+	addq $32, %rsp         /* skip es ds error_code vec_no */
 	popq %rcx              /* if->rip */
-	addq $8, %rsp
+	addq $8, %rsp          /* skip cs */
 	popq %r11              /* if->eflags */
 	popq %rsp              /* if->rsp */
 	sysretq

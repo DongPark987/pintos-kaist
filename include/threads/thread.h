@@ -66,18 +66,20 @@ typedef int tid_t;
 #define CHILD_BASE 0
 #define CHILD_EXIT 1
 
+#define BASE_EXIT 0
+#define FORK_SUCC -394
+#define FORK_FAIL -395
+
 /* Kernel or User */
 #define KERN_TASK 0
 #define USER_TASK 1
 
-/* Max Nested Fork */
-#define MAX_FORK_DEPTH 28
-
 /* Terminated children list. */
 struct thread_child {
   tid_t tid;
-  uint64_t rtn;
   uint8_t status;
+  uint64_t rtn_value;
+  struct thread *addr;
   struct list_elem elem;
 };
 
@@ -157,13 +159,12 @@ struct thread {
 
   uint64_t wake_tick; /* Wake Tick */
 
-#ifdef USERPROG
+  // #ifdef USERPROG
   /* Owned by userprog/process.c. */
   uint8_t mode;           /* Kernel thread or User process */
   uint64_t *pml4;         /* Page map level 4 */
   struct file **fdt;      /* File descriptor table */
   struct file *exec_file; /* User process's exec_file */
-  uint8_t fork_depth;     /* Nested Fork Count */
 
   struct thread *parent;
   struct list children;
@@ -173,7 +174,7 @@ struct thread {
   uint64_t exit_code; /* Return value of child */
 
   struct intr_frame fork_tf; /* Context to fork  */
-#endif
+// #endif
 #ifdef VM
   /* Table for whole virtual memory owned by thread. */
   struct supplemental_page_table spt;
@@ -243,5 +244,8 @@ void do_iret(struct intr_frame *tf);
 
 /* iterate */
 void iterate_recent_cpu(struct list_elem *, void *);
+
+/* Get child info. */
+struct thread_child *thread_get_child(struct list *, tid_t);
 
 #endif /* threads/thread.h */
