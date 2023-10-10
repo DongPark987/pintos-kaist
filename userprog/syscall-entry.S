@@ -70,7 +70,7 @@ no_sti:
 	popq %rax
 	addq $32, %rsp         /* skip es ds error_code vec_no */
 	popq %rcx              /* if->rip */
-	addq $8, %rsp          /* skip cs */
+	addq $8, %rsp          /* skip cs, since sysretq automatically restore ss, cs. */
 	popq %r11              /* if->eflags */
 	popq %rsp              /* if->rsp */
 	sysretq
