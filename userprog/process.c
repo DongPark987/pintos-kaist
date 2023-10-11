@@ -39,6 +39,8 @@ process_init(void)
 {
 	struct thread *current = thread_current();
 	current->fdt = palloc_get_multiple(PAL_ZERO, 3);
+	if (current->fdt == NULL)
+		return;
 	current->fdt[0].stdio = 1;
 	current->fdt[1].stdio = 2;
 	current->fd_cnt = 0;
@@ -74,7 +76,6 @@ tid_t process_create_initd(const char *file_name)
 	tid = thread_create(strtok_r(file_name, " ", save_ptr), PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
 		palloc_free_page(fn_copy);
-	// printf("초기화 끝\n");
 	return tid;
 }
 
@@ -103,11 +104,27 @@ tid_t process_fork(const char *name, struct intr_frame *if_ UNUSED)
 	/* Clone current thread to new thread.*/
 	struct thread *curr = thread_current();
 	memcpy(&curr->fork_tf, if_, sizeof(struct intr_frame));
-	if (curr->fork_depth > 28)
-		return -1;
-	int ret = thread_create(name, PRI_DEFAULT, __do_fork, curr);
+
+	// if (curr->fork_depth > 179)
+	// 	return -1;
+	int tid = thread_create(name, PRI_DEFAULT, __do_fork, curr);
+
+	// 	return -1;
+
+	if (tid == TID_ERROR)
+	{
+		// printf("크리에이트 실패\n");
+		return TID_ERROR;
+	}
 	sema_down(&curr->fork_sema);
-	return ret;
+
+	struct child_info *c_info = get_child_info(curr, tid);
+	// printf("자식 ret :%d\n", c_info->ret);
+	if (c_info == NULL || c_info->ret == -9999)
+		// printf("처리해\n");
+		return -1;
+
+	return tid;
 }
 
 #ifndef VM
@@ -150,6 +167,11 @@ duplicate_pte(uint64_t *pte, void *va, void *aux)
 
 	/* 3. TODO: 자식을 위해 새로운 PAL_USER 페이지를 할당하고 결과를 NEWPAGE에 설정하세요. */
 	newpage = palloc_get_page(PAL_USER);
+	if (newpage == NULL)
+	{
+
+		return false;
+	}
 
 	/* 4. TODO: 부모의 페이지를 새 페이지로 복제하고
 	 *    TODO: 부모의 페이지가 쓰기 가능한지 확인하세요 (결과에 따라 WRITABLE을 설정하세요). */
@@ -162,8 +184,8 @@ duplicate_pte(uint64_t *pte, void *va, void *aux)
 	if (!pml4_set_page(current->pml4, va, newpage, writable))
 	{
 		/* 6. TODO: if fail to insert page, do error handling. */
-		return TID_ERROR;
-		printf("에러\n");
+		palloc_free_page(newpage);
+		return false;
 	}
 	return true;
 }
@@ -179,9 +201,12 @@ duplicate_pte(uint64_t *pte, void *va, void *aux)
 static void
 __do_fork(void *aux)
 {
+
 	struct intr_frame if_;
 	struct thread *parent = (struct thread *)aux;
 	struct thread *current = thread_current();
+	// 페이지 폴트 분기
+	current->exit_code = -9999;
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
 	/* TODO: 부모의 인터럽트 플래그를 어떻게든 전달하세요. (예: process_fork()의 if_) */
 	struct intr_frame *parent_if = &parent->fork_tf;
@@ -196,6 +221,7 @@ __do_fork(void *aux)
 	if (current->pml4 == NULL)
 		goto error;
 	process_activate(current);
+
 #ifdef VM
 	supplemental_page_table_init(&current->spt);
 	if (!supplemental_page_table_copy(&current->spt, &parent->spt))
@@ -203,8 +229,10 @@ __do_fork(void *aux)
 #else
 	if (!pml4_for_each(parent->pml4, duplicate_pte, parent))
 	{
+
 		goto error;
 	}
+
 	// printf("부모스택 복사 완료\n");
 
 #endif
@@ -220,8 +248,12 @@ __do_fork(void *aux)
 	 * TODO:       부모는 이 함수가 부모의 자원을 성공적으로 복제할 때까지 fork()에서 반환해서는 안 됩니다.*/
 
 	process_init();
+	if (current->fdt == NULL)
+	{
+		// printf("으악1\n");
+		goto error;
+	}
 	/* Finally, switch to the newly created process. */
-	struct file **tmp_fdt = palloc_get_page(PAL_ZERO);
 
 	current->fdt[0].stdio = 0;
 	current->fdt[1].stdio = 0;
@@ -239,6 +271,12 @@ __do_fork(void *aux)
 		if (parent->fdt[i].dup2_num != 0 && current->fdt[i].file != NULL)
 		{
 			struct file *dup_file = file_duplicate(parent->fdt[i].file);
+			if (dup_file == NULL)
+			{
+				// printf("으악1\n");
+
+				goto error;
+			}
 			for (int j = i; j < MAX_FD; j++)
 			{
 				// 현재 file i 가 순회중인 j와 같은 경우에만 current에게 파일 세팅
@@ -253,10 +291,17 @@ __do_fork(void *aux)
 		{
 			// 표준입출력도 아니고 dup2도 아니고 파일이 열려 있는경우 복사
 			if (parent->fdt[i].file != NULL)
+			{
 				current->fdt[i].file = file_duplicate(parent->fdt[i].file);
-
+				if (current->fdt[i].file == NULL)
+				{
+					// printf("으악2\n");
+					goto error;
+				}
+			}
 		}
 	}
+
 	// for (int i = MIN_FD; i < MAX_FD; i++)
 	// {
 	// 	if (parent->fdt[i].file != NULL)
@@ -282,16 +327,30 @@ __do_fork(void *aux)
 	// 		current->fdt[i].dup2_num = parent->fdt[i].dup2_num;
 	// 	}
 	// }
-	palloc_free_page(tmp_fdt);
 
 	if_.R.rax = 0;
 	// printf("자식 실행중 다시체크: %s tid: %d\n",current->name,current->tid);
 	// printf("자식 RIP!!!!!!!!!!!!!!!!!!%p\n",if_.rip);
 	current->fork_depth = parent->fork_depth + 1;
-	sema_up(&current->parent->fork_sema);
+
 	if (succ)
+	{
+		current->exit_code = 0;
+		current->child_info->ret = 123456;
+
+		sema_up(&current->parent->fork_sema);
 		do_iret(&if_);
+	}
 error:
+
+	current->child_info->ret = -9999;
+	current->exit_code = -9999;
+	list_remove(&current->child_info->child_elem);
+	struct child_info *trash;
+	trash = list_entry(&current->child_info->child_elem, struct child_info, child_elem);
+	free(trash);
+	sema_up(&current->parent->fork_sema);
+	sema_up(&current->parent->wait_sema);
 	thread_exit();
 }
 
@@ -355,7 +414,6 @@ int process_wait(tid_t child_tid UNUSED)
 	 * XXX:       implementing the process_wait. */
 	/* XXX: 힌트) pintos는 process_wait(initd)가 실행되면 종료합니다. 따라서
 	 * XXX:       process_wait를 구현하기 전에 여기에 무한 루프를 추가하는 것을 권장합니다. */
-	// printf("%s 자러간다\n",thread_current()->name);
 	struct thread *curr = thread_current();
 	struct child_info *child = NULL;
 	tid_t find_child = -1;
@@ -370,7 +428,6 @@ int process_wait(tid_t child_tid UNUSED)
 		for (struct list_elem *cur = list_begin(&curr->child_list); cur != list_end(&curr->child_list); cur = list_next(cur))
 		{
 			child = list_entry(cur, struct child_info, child_elem);
-			// printf("pid: %d, status: %d, ret: %d\n",child->pid, child->status, child->ret);
 			if (child->pid == child_tid)
 			{
 				find_child = child->pid;
@@ -385,56 +442,12 @@ int process_wait(tid_t child_tid UNUSED)
 		}
 		if (find_child == -1)
 		{
-			return;
+			return -1;
 		}
 		sema_init(&curr->wait_sema, 0);
 		sema_down(&curr->wait_sema);
 	}
 }
-
-// /* Exit the process. This function is called by thread_exit (). */
-// void process_exit(void)
-// {
-// 	struct thread *curr = thread_current();
-// 	/* TODO: Your code goes here.
-// 	 * TODO: Implement process termination message (see
-// 	 * TODO: project2/process_termination.html).
-// 	 * TODO: We recommend you to implement process resource cleanup here. */
-
-// 	/* TODO: 여기에 코드를 작성하세요.
-// 	 * TODO: 프로세스 종료 메시지를 구현하세요 (project2/process_termination.html 참조).
-// 	 * TODO: 여기에서 프로세스 리소스 정리를 구현하는 것을 권장합니다. */
-// 	if (is_kernel_vaddr(curr->pml4))
-// 		printf("%s: exit(%d)\n", curr->name, curr->exit_code);
-// 		if (curr->parent != NULL)
-// 		{
-// 			curr->child_info->ret = curr->exit_code;
-// 			curr->child_info->status = CHILD_EXIT;
-// 			if (curr->exe_file != NULL)
-// 				file_close(curr->exe_file);
-
-// 			for (int i = MIN_FD; i < MAX_FD; i++)
-// 			{
-// 				if (curr->fdt[i] != NULL)
-// 					file_close(curr->fdt[i]);
-// 			}
-// 			if (curr->fdt != NULL)
-// 				palloc_free_page(curr->fdt);
-
-// 			// if (!list_empty(&curr->child_list))
-// 			// {
-// 			// 	struct child_info *trash;
-// 			// 	for (struct list_elem *cur = list_begin(&curr->child_list); cur != list_end(&curr->child_list); cur = list_next(cur))
-// 			// 	{
-// 			// 		trash = list_entry(cur, struct child_info, child_elem);
-// 			// 		free(trash);
-// 			// 	}
-// 			// }
-// 		}
-
-// 	sema_up(&curr->parent->wait_sema);
-// 	process_cleanup();
-// }
 
 void process_exit(void)
 {
@@ -447,12 +460,26 @@ void process_exit(void)
 	/* TODO: 여기에 코드를 작성하세요.
 	 * TODO: 프로세스 종료 메시지를 구현하세요 (project2/process_termination.html 참조).
 	 * TODO: 여기에서 프로세스 리소스 정리를 구현하는 것을 권장합니다. */
+
 	if (!curr->is_kernel)
 	{
+		printf("%s: exit(%d)\n", curr->name, curr->exit_code);
+		
+	if (curr->parent != NULL)
+	{
+		curr->child_info->ret = curr->exit_code;
+		curr->child_info->status = CHILD_EXIT;
+		if (curr->exe_file != NULL)
+			file_close(curr->exe_file);
+		sema_up(&curr->parent->wait_sema);
+	}
+	}
 
+
+	if (curr->fdt != NULL)
+	{
 		for (int i = 0; i < MAX_FD; i++)
 		{
-
 			if (curr->fdt[i].file != NULL)
 			{
 				int open_cnt = file_dec_open_cnt(curr->fdt[i].file);
@@ -460,29 +487,17 @@ void process_exit(void)
 					file_close(curr->fdt[i].file);
 			}
 		}
-
-		if (curr->fdt != NULL)
-		{
-			palloc_free_multiple(curr->fdt, 3);
-			curr->fdt = NULL;
-		}
-
-		if (curr->parent != NULL)
-		{
-			curr->child_info->ret = curr->exit_code;
-			curr->child_info->status = CHILD_EXIT;
-			if (curr->exe_file != NULL)
-				file_close(curr->exe_file);
-			printf("%s: exit(%d)\n", curr->name, curr->exit_code);
-			sema_up(&curr->parent->wait_sema);
-		}
+		palloc_free_multiple(curr->fdt, 3);
 	}
+
 	if (!list_empty(&curr->child_list))
 	{
 		struct child_info *trash;
 		for (struct list_elem *cur = list_begin(&curr->child_list); cur != list_end(&curr->child_list); cur = list_next(cur))
 		{
 			trash = list_entry(cur, struct child_info, child_elem);
+			list_remove(cur);
+			trash->child_thread->parent = NULL;
 			free(trash);
 		}
 	}
@@ -985,3 +1000,17 @@ setup_stack(struct intr_frame *if_)
 	return success;
 }
 #endif /* VM */
+
+struct child_info *get_child_info(struct thread *curr, int child_pid)
+{
+	struct child_info *child = NULL;
+	int find_child = -1;
+	for (struct list_elem *cur = list_begin(&curr->child_list); cur != list_end(&curr->child_list); cur = list_next(cur))
+	{
+		child = list_entry(cur, struct child_info, child_elem);
+		if (child->pid == child_pid)
+			return child;
+	}
+
+	return NULL;
+}

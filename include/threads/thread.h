@@ -8,6 +8,7 @@
 #include "threads/synch.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
+#include "threads/malloc.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -150,6 +151,7 @@ struct child_info
 	tid_t pid;
 	int ret;
 	enum child_status status;
+	struct thread *child_thread;
 	struct list_elem child_elem;
 };
 

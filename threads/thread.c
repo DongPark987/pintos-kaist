@@ -278,8 +278,9 @@ tid_t thread_create(const char *name, int priority,
 
 	/* Allocate thread. */
 	t = palloc_get_page(PAL_ZERO);
-	if (t == NULL)
+	if (t == NULL){
 		return TID_ERROR;
+	}
 
 	/* Initialize thread. */
 	init_thread(t, name, priority);
@@ -301,8 +302,14 @@ tid_t thread_create(const char *name, int priority,
 	/* Add to run queue. */
 	t->parent = thread_current();
 	struct child_info *child_info = malloc(sizeof(struct child_info));
+	if(child_info == NULL){
+		palloc_free_page(t);
+		return TID_ERROR;
+	}
 	child_info->pid = t->tid;
 	child_info->status = CHILD_RUNNING;
+	child_info->child_thread = t;
+
 	/* 부모에게 알리는 자신의 상태 정보 연결 */
 	t->child_info = child_info;
 	list_push_back(&t->parent->child_list, &child_info->child_elem);
@@ -713,6 +720,8 @@ init_thread(struct thread *t, const char *name, int priority)
 	t->fork_depth = 0;
 	t->exe_file = NULL;
 	t->parent = NULL;
+	t->child_info = NULL;
+	t->fdt = NULL;
 	t->is_kernel = 1;
 }
 

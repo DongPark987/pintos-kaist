@@ -18,4 +18,6 @@ int process_wait (tid_t);
 void process_exit (void);
 void process_activate (struct thread *next);
 
+struct child_info *get_child_info(struct thread *curr, int child_pid);
+
 #endif /* userprog/process.h */

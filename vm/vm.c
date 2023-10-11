@@ -83,7 +83,7 @@ void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 	vm_dealloc_page (page);
 	return true;
-}
+} 
 
 /* Get the struct frame, that will be evicted. */
 static struct frame *

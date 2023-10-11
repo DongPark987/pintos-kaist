@@ -161,6 +161,7 @@ int fd_read(int fd, void *buffer, size_t size)
 
 	if (curr->fdt[fd].file == NULL)
 		return -1;
+	// printf("아이노드: %p \n",file_get_inode_lock(curr->fdt[fd].file));
 	lock_acquire(file_get_inode_lock(curr->fdt[fd].file));
 	read_size = file_read(curr->fdt[fd].file, buffer, size);
 	lock_release(file_get_inode_lock(curr->fdt[fd].file));
@@ -219,7 +220,7 @@ int exec(const char *cmd_line)
 	char *file_name = palloc_get_page(0);
 	strlcpy(file_name, cmd_line, strlen(cmd_line) + 1);
 	if (process_exec(file_name) == -1)
-		exit(-1);
+		return -1;
 }
 
 void fd_seek(int fd, unsigned position)
@@ -253,8 +254,9 @@ int dup2(int oldfd, int newfd)
 			return newfd;
 
 		// new가 표준 입출력이거나 파일이 열려 있는 상태라면 close
-		if (curr->fdt[newfd].stdio != 0 || curr->fdt[newfd].file != NULL)
+		if (curr->fdt[newfd].stdio != 0 || curr->fdt[newfd].file != NULL){
 			fd_close(newfd);
+		}
 
 		// 표준 입출력 fd로 변환
 		curr->fdt[newfd].stdio = curr->fdt[oldfd].stdio;
@@ -275,8 +277,6 @@ int dup2(int oldfd, int newfd)
 	if (curr->fdt[newfd].file != 0)
 		fd_close(newfd);
 		
-	
-
 	curr->fdt[newfd].file = curr->fdt[oldfd].file;
 	curr->fdt[newfd].dup2_num = 1;
 	curr->fdt[newfd].stdio = 0;
@@ -317,6 +317,7 @@ void syscall_handler(struct intr_frame *f UNUSED)
 		f->R.rax = file_create(f->R.rdi, f->R.rsi);
 		break;
 	case SYS_REMOVE:
+
 		break;
 	case SYS_OPEN:
 		f->R.rax = fd_open(f->R.rdi);
