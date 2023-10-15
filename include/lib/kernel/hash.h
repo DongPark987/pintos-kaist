@@ -20,6 +20,22 @@
  * linked list implementation.  Refer to lib/kernel/list.h for a
  * detailed explanation. */
 
+/* 해시 테이블.
+ *
+ * 이 데이터 구조는 Pintos 프로젝트 3의 Tour에서 자세하게 문서화되어 있습니다.
+ *
+ * 이는 체이닝을 사용한 표준 해시 테이블입니다. 테이블에서 요소를 찾기 위해
+ * 요소의 데이터에 대한 해시 함수를 계산하고 그것을 이용하여
+ * 이중 연결 리스트 배열의 인덱스로 사용한 다음 리스트를 선형적으로 검색합니다.
+ *
+ * 체인 리스트는 동적 할당을 사용하지 않습니다. 대신 해시에
+ * 포함될 수 있는 각 구조는 반드시 'struct hash_elem' 멤버를 내장해야 합니다.
+ * 모든 해시 함수는 이 'struct hash_elem'에서 작동합니다.
+ * hash_entry 매크로를 사용하여 struct hash_elem에서 다시 해당 구조체 객체로의
+ * 변환이 가능합니다. 이는 링크드 리스트 구현에서 사용되는 동일한 기술입니다.
+ * 자세한 설명은 lib/kernel/list.h를 참조하십시오. */
+
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -98,3 +114,4 @@ uint64_t hash_string (const char *);
 uint64_t hash_int (int);
 
 #endif /* lib/kernel/hash.h */
+

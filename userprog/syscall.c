@@ -61,13 +61,13 @@ void syscall_init(void)
 			  FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
 }
 
-void exit(int status)
+static void exit(int status)
 {
 	thread_current()->exit_code = status;
 	thread_exit();
 }
 
-bool file_create(char *str, off_t size)
+static bool file_create(char *str, off_t size)
 {
 	// bool result = pml4e_walk(base_pml4,str,0);
 	if (str == NULL)
@@ -87,7 +87,7 @@ static int find_free_fd(struct thread *cur_t)
 	return -1;
 }
 
-int is_std_io_open(int fd)
+static int is_std_io_open(int fd)
 {
 	struct thread *curr = thread_current();
 	if (curr->fdt[fd].file == 1)
@@ -96,7 +96,7 @@ int is_std_io_open(int fd)
 		return 0;
 }
 
-int fd_open(char *str)
+static int fd_open(char *str)
 {
 	struct thread *curr = thread_current();
 	struct file *f;
@@ -113,7 +113,7 @@ int fd_open(char *str)
 	return fd;
 }
 
-void fd_close(int fd)
+static void fd_close(int fd)
 {
 	struct thread *curr = thread_current();
 
@@ -142,17 +142,36 @@ void fd_close(int fd)
 	curr->fd_cnt--;
 }
 
-int fd_read(int fd, void *buffer, size_t size)
+static bool buffer_protection(void *buffer){
+	struct thread *curr = thread_current();
+	uint8_t *upage = pg_round_down(buffer);
+	uint64_t *pte = pml4e_walk(curr->pml4, upage, 0);
+	if (*pte != NULL && !is_writable(pte))
+		return false;
+	return true;
+}
+
+static int fd_read(int fd, void *buffer, size_t size)
 {
 	struct thread *curr = thread_current();
 	/* 유효하지 않은 fd */
 	if (fd < 0)
 		return -1;
+	/* write 가능한 버퍼인지 검사 */
+	if(!buffer_protection(buffer))
+		exit(-1);
+
+	// int64_t *pte = pml4e_walk(curr->pml4, buffer, 0);
+	// if (pte != NULL)
+	// {
+	// 	if (!is_writable(pte))
+	// 		exit(-1);
+	// }
 
 	/* 표준 입출력 fd 읽기 */
 	if (curr->fdt[fd].stdio != 0)
 	{
-		if (curr->fdt[fd].stdio == STDIN_FILENO)
+		if (curr->fdt[fd].stdio == STDIN_FILENO) 
 			return input_getc();
 		return -1;
 	}
@@ -161,14 +180,13 @@ int fd_read(int fd, void *buffer, size_t size)
 
 	if (curr->fdt[fd].file == NULL)
 		return -1;
-	// printf("아이노드: %p \n",file_get_inode_lock(curr->fdt[fd].file));
 	lock_acquire(file_get_inode_lock(curr->fdt[fd].file));
 	read_size = file_read(curr->fdt[fd].file, buffer, size);
 	lock_release(file_get_inode_lock(curr->fdt[fd].file));
 	return read_size;
 }
 
-int fd_file_size(int fd)
+static int fd_file_size(int fd)
 {
 	if (fd < 0)
 		return 0;
@@ -176,7 +194,7 @@ int fd_file_size(int fd)
 	return file_length(cur_t->fdt[fd].file);
 }
 
-int fd_write(int fd, char *buffer, unsigned size)
+static int fd_write(int fd, char *buffer, unsigned size)
 {
 	struct thread *curr = thread_current();
 	off_t write_size = 0;
@@ -206,7 +224,7 @@ int fd_write(int fd, char *buffer, unsigned size)
 	}
 }
 
-int sys_fork(struct intr_frame *f UNUSED)
+static int sys_fork(struct intr_frame *f UNUSED)
 {
 	struct thread *curr = thread_current();
 	// printf("부모 RIP!!!!!!!!!!!!!!!!!!%p\n",f->rip);
@@ -215,15 +233,21 @@ int sys_fork(struct intr_frame *f UNUSED)
 	return tid;
 }
 
-int exec(const char *cmd_line)
+static int exec(const char *cmd_line)
 {
+	struct thread *curr = thread_current();
 	char *file_name = palloc_get_page(0);
 	strlcpy(file_name, cmd_line, strlen(cmd_line) + 1);
+	if (curr->exe_file != NULL)
+	{
+		file_close(curr->exe_file);
+		// curr->exe_file = NULL;
+	}
 	if (process_exec(file_name) == -1)
 		return -1;
 }
 
-void fd_seek(int fd, unsigned position)
+static void fd_seek(int fd, unsigned position)
 {
 	struct thread *curr = thread_current();
 
@@ -238,7 +262,7 @@ void fd_seek(int fd, unsigned position)
 	file_seek(curr->fdt[fd].file, position);
 }
 
-int dup2(int oldfd, int newfd)
+static int dup2(int oldfd, int newfd)
 {
 	struct thread *curr = thread_current();
 	// printf("%d를 %d로 덥트한다.\n",newfd,oldfd);
@@ -254,7 +278,8 @@ int dup2(int oldfd, int newfd)
 			return newfd;
 
 		// new가 표준 입출력이거나 파일이 열려 있는 상태라면 close
-		if (curr->fdt[newfd].stdio != 0 || curr->fdt[newfd].file != NULL){
+		if (curr->fdt[newfd].stdio != 0 || curr->fdt[newfd].file != NULL)
+		{
 			fd_close(newfd);
 		}
 
@@ -265,18 +290,18 @@ int dup2(int oldfd, int newfd)
 		return newfd;
 	}
 
-	//oldfd가 닫혀있으면 실패
+	// oldfd가 닫혀있으면 실패
 	if (curr->fdt[oldfd].file == 0)
 		return -1;
 
-	//유효한데 같은 fd면 그냥 반환
+	// 유효한데 같은 fd면 그냥 반환
 	if (newfd == oldfd)
 		return newfd;
 
-	//열려 있으면 닫는다.
+	// 열려 있으면 닫는다.
 	if (curr->fdt[newfd].file != 0)
 		fd_close(newfd);
-		
+
 	curr->fdt[newfd].file = curr->fdt[oldfd].file;
 	curr->fdt[newfd].dup2_num = 1;
 	curr->fdt[newfd].stdio = 0;
@@ -284,9 +309,10 @@ int dup2(int oldfd, int newfd)
 	return newfd;
 }
 
-unsigned fd_tell (int fd){
+unsigned fd_tell(int fd)
+{
 	struct thread *curr = thread_current();
-	if(curr->fdt[fd].file==0)
+	if (curr->fdt[fd].file == 0)
 		return 0;
 	return file_tell(curr->fdt[fd].file);
 }
@@ -335,7 +361,7 @@ void syscall_handler(struct intr_frame *f UNUSED)
 		fd_seek(f->R.rdi, f->R.rsi);
 		break;
 	case SYS_TELL:
-		f->R.rax = fd_tell (f->R.rdi);
+		f->R.rax = fd_tell(f->R.rdi);
 		break;
 	case SYS_CLOSE:
 		fd_close(f->R.rdi);

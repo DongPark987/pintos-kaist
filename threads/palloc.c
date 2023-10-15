@@ -153,6 +153,7 @@ populate_pools (struct area *base_mem, struct area *ext_mem) {
 
 			switch (state) {
 				case KERN:
+					//rem: 커널에 할당하고 싶은 페이지 수
 					if (rem > size_in_pg) {
 						rem -= size_in_pg;
 						break;

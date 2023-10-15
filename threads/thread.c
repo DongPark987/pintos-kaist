@@ -315,6 +315,7 @@ tid_t thread_create(const char *name, int priority,
 	list_push_back(&t->parent->child_list, &child_info->child_elem);
 	thread_unblock(t);
 	thread_yield();
+
 	return tid;
 }
 
@@ -717,7 +718,6 @@ init_thread(struct thread *t, const char *name, int priority)
 	sema_init(&t->fork_sema, 0);
 	sema_init(&t->wait_sema, 0);
 	list_init(&t->child_list);
-	t->fork_depth = 0;
 	t->exe_file = NULL;
 	t->parent = NULL;
 	t->child_info = NULL;

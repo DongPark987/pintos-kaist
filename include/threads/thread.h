@@ -9,6 +9,7 @@
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "threads/malloc.h"
+#define VM
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -124,11 +125,11 @@ struct thread
 	struct thread *parent;	// 끝
 	struct child_info *child_info;
 	struct file* exe_file;
-	int fork_depth;
+
 	uint8_t is_kernel;
 	int exit_code;
 
-	// #ifdef USERPROG
+// #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4; /* Page map level 4 */
 	struct file_fd *fdt;
@@ -140,7 +141,7 @@ struct thread
 #endif
 	/* Owned by thread.c. */
 	struct intr_frame tf; /* Information for switching */
-	struct intr_frame fork_tf; /* Information for fork */
+	struct intr_frame *fork_tf; /* Information for fork */
 	
 	unsigned magic;		  /* Detects stack overflow. */
 };

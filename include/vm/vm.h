@@ -2,6 +2,9 @@
 #define VM_VM_H
 #include <stdbool.h>
 #include "threads/palloc.h"
+#include "threads/mmu.h"
+
+#include "hash.h"
 
 enum vm_type {
 	/* page not initialized */
@@ -36,16 +39,34 @@ struct thread;
 
 #define VM_TYPE(type) ((type) & 7)
 
+/* 프로세스 실행 파일을 lazy 하게 로드하기 위한 구조체 */
+struct lazy_file
+{
+    off_t ofs;
+    uint32_t read_bytes;
+    uint32_t zero_bytes;
+    bool writable;
+
+};
+
 /* The representation of "page".
  * This is kind of "parent class", which has four "child class"es, which are
  * uninit_page, file_page, anon_page, and page cache (project4).
  * DO NOT REMOVE/MODIFY PREDEFINED MEMBER OF THIS STRUCTURE. */
+
+ /* "페이지"의 표현.
+ * 이는 네 개의 "하위 클래스"인 uninit_page, file_page, anon_page 및 페이지 캐시 (프로젝트4)를 가지고 있는
+ * 종류의 "상위 클래스"입니다.
+ * 이 구조체의 미리 정의된 멤버를 제거하거나 수정하지 마십시오. */
 struct page {
 	const struct page_operations *operations;
 	void *va;              /* Address in terms of user space */
 	struct frame *frame;   /* Back reference for frame */
 
 	/* Your implementation */
+	/* 해시테이블에 기록하기 위한 elem */
+	struct hash_elem hash_elem;
+	bool writable;
 
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
@@ -69,6 +90,11 @@ struct frame {
  * This is one way of implementing "interface" in C.
  * Put the table of "method" into the struct's member, and
  * call it whenever you needed. */
+
+/* 페이지 작업에 대한 함수 테이블.
+ * 이것은 C에서 "인터페이스"를 구현하는 한 가지 방법입니다.
+ * "메소드"의 테이블을 구조체 멤버로 넣고
+ * 필요할 때마다 호출하세요. */
 struct page_operations {
 	bool (*swap_in) (struct page *, void *);
 	bool (*swap_out) (struct page *);
@@ -84,7 +110,12 @@ struct page_operations {
 /* Representation of current process's memory space.
  * We don't want to force you to obey any specific design for this struct.
  * All designs up to you for this. */
+/* 현재 프로세스의 메모리 공간 표현.
+ * 이 구조체에 대해 특정 디자인을 강제하고 싶지 않습니다.
+ * 이에 대한 모든 디자인은 여러분에게 달려있습니다. */
 struct supplemental_page_table {
+	struct hash hash_pt;
+	size_t main_botom;
 };
 
 #include "threads/thread.h"
@@ -109,4 +140,10 @@ void vm_dealloc_page (struct page *page);
 bool vm_claim_page (void *va);
 enum vm_type page_get_type (struct page *page);
 
+/* kva와 uva를 pml4로 연결하는 함수 */
+bool va_set_page(void *va, void *kva, bool writable);
+/* malloc 예외처리용 함수 */
+void va_exeception_free(void *f);
+/* 페이지를 찾는 함수 */
+struct page *page_lookup(const void *address, struct supplemental_page_table *spt);
 #endif  /* VM_VM_H */

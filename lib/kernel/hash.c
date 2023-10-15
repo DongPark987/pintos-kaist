@@ -318,6 +318,11 @@ is_power_of_2 (size_t x) {
    ideal.  This function can fail because of an out-of-memory
    condition, but that'll just make hash accesses less efficient;
    we can still continue. */
+
+/* 해시 테이블 H의 버킷 수를 이상적인 값에 맞게 변경합니다. 
+   이 함수는 메모리 부족으로 실패할 수 있지만, 그렇다고 해시 접근이 덜 효율적이 될 뿐입니다;
+   여전히 계속 진행할 수 있습니다. */
+   
 static void
 rehash (struct hash *h) {
 	size_t old_bucket_cnt, new_bucket_cnt;
@@ -391,4 +396,3 @@ remove_elem (struct hash *h, struct hash_elem *e) {
 	h->elem_cnt--;
 	list_remove (&e->list_elem);
 }
-

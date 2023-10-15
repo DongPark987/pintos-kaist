@@ -7,6 +7,14 @@
  * initialization callback that passed from vm_alloc_page_with_initializer
  * function.
  * */
+/* uninit.c: 초기화되지 않은 페이지의 구현.
+ *
+ * 모든 페이지는 초기화되지 않은 페이지로 생성됩니다. 첫 번째 페이지 폴트가 발생할 때,
+ * 핸들러 체인은 uninit_initialize (page->operations.swap_in)를 호출합니다.
+ * uninit_initialize 함수는 페이지 객체 (anon, file, page_cache)로 변환하고,
+ * 페이지 객체를 초기화하며 vm_alloc_page_with_initializer 함수에서 전달된
+ * 초기화 콜백을 호출합니다. */
+
 
 #include "vm/vm.h"
 #include "vm/uninit.h"
@@ -47,6 +55,7 @@ static bool
 uninit_initialize (struct page *page, void *kva) {
 	struct uninit_page *uninit = &page->uninit;
 
+	// printf("언이닛 실행\n");
 	/* Fetch first, page_initialize may overwrite the values */
 	vm_initializer *init = uninit->init;
 	void *aux = uninit->aux;
