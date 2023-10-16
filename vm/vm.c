@@ -72,7 +72,7 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void *upage,
 
 		/* TODO: 페이지를 spt에 삽입하십시오. */
 
-		struct page *t_page = (struct page *)malloc(sizeof(struct page));
+		struct page *t_page = (struct page *)calloc(1,sizeof(struct page));
 		if (t_page == NULL)
 			goto err;
 		switch (type)
@@ -88,7 +88,7 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void *upage,
 			break;
 		case VM_FILE:
 			/* code */
-			uninit_new(t_page, rd_upage, init, type, aux, NULL);
+			uninit_new(t_page, rd_upage, init, type, aux, file_backed_initializer);
 			break;
 		case VM_PAGE_CACHE:
 			/* code */
@@ -171,7 +171,7 @@ static struct frame *vm_get_frame(void)
 	frame = malloc(sizeof(struct frame));
 	if (frame == NULL)
 		return NULL;
-	uint8_t *kpage = palloc_get_page(PAL_USER);
+	uint8_t *kpage = palloc_get_page(PAL_USER|PAL_ZERO);
 	frame->kva = kpage;
 	frame->page = NULL;
 	if (frame->kva == NULL)
@@ -277,6 +277,8 @@ static bool vm_do_claim_page(struct page *page)
 	/* Set links */
 	frame->page = page;
 	page->frame = frame;
+	struct thread *curr = thread_current();
+	pml4_set_page(curr->pml4, page->va, frame->kva, page->writable);
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
 	return swap_in(page, frame->kva);
@@ -358,6 +360,7 @@ err:
 void hash_free_page(struct hash_elem *h_page, void *aux UNUSED)
 {
 	struct page *page = hash_entry(h_page, struct page, hash_elem);
+	// destroy(page);
 	free(page);
 }
 
@@ -389,7 +392,6 @@ void supplemental_page_table_kill(struct supplemental_page_table *spt UNUSED)
 	// 	case VM_PAGE_CACHE:
 	// 		/* code */
 	// 		break;
-
 	// 	default:
 	// 		break;
 	// 	}

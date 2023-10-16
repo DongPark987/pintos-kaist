@@ -30,8 +30,6 @@ bool anon_initializer(struct page *page, enum vm_type type, void *kva)
 	/* Set up the handler */
 	// printf("아논 이니셜\n");
 	page->operations = &anon_ops;
-	struct thread *curr = thread_current();
-	pml4_set_page(curr->pml4, page->va, kva, page->writable);
 	struct anon_page *anon_page = &page->anon;
 }
 

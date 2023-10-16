@@ -142,7 +142,8 @@ static void fd_close(int fd)
 	curr->fd_cnt--;
 }
 
-static bool buffer_protection(void *buffer){
+static bool buffer_protection(void *buffer)
+{
 	struct thread *curr = thread_current();
 	uint8_t *upage = pg_round_down(buffer);
 	uint64_t *pte = pml4e_walk(curr->pml4, upage, 0);
@@ -158,7 +159,7 @@ static int fd_read(int fd, void *buffer, size_t size)
 	if (fd < 0)
 		return -1;
 	/* write 가능한 버퍼인지 검사 */
-	if(!buffer_protection(buffer))
+	if (!buffer_protection(buffer))
 		exit(-1);
 
 	// int64_t *pte = pml4e_walk(curr->pml4, buffer, 0);
@@ -171,7 +172,7 @@ static int fd_read(int fd, void *buffer, size_t size)
 	/* 표준 입출력 fd 읽기 */
 	if (curr->fdt[fd].stdio != 0)
 	{
-		if (curr->fdt[fd].stdio == STDIN_FILENO) 
+		if (curr->fdt[fd].stdio == STDIN_FILENO)
 			return input_getc();
 		return -1;
 	}
@@ -309,12 +310,33 @@ static int dup2(int oldfd, int newfd)
 	return newfd;
 }
 
-unsigned fd_tell(int fd)
+static unsigned fd_tell(int fd)
 {
 	struct thread *curr = thread_current();
 	if (curr->fdt[fd].file == 0)
 		return 0;
 	return file_tell(curr->fdt[fd].file);
+}
+
+static void *mmap(void *addr, size_t length, int writable, int fd, off_t offset)
+{
+	struct thread *curr = thread_current();
+	struct supplemental_page_table *spt = &curr->spt;
+	uint64_t *upage = pg_round_down(addr);
+	if (addr != upage || spt_find_page(spt, upage) != NULL 
+		|| curr->fdt[fd].file == NULL || fd == 0 || fd == 1)
+		return NULL;
+
+	return do_mmap(addr, length, writable, file_reopen(curr->fdt[fd].file), offset);
+}
+
+static void munmap(void *addr)
+{
+
+	// struct thread *curr = thread_current();
+	// if (curr->fdt[fd].file == 0)
+	// 	return 0;
+	// return file_tell(curr->fdt[fd].file);
 }
 
 /* The main system call interface */
@@ -369,6 +391,14 @@ void syscall_handler(struct intr_frame *f UNUSED)
 
 	case SYS_DUP2:
 		f->R.rax = dup2(f->R.rdi, f->R.rsi);
+		break;
+
+	case SYS_MMAP:
+		f->R.rax = mmap(f->R.rdi, f->R.rsi, f->R.rdx, f->R.r10, f->R.r8);
+		break;
+
+	case SYS_MUNMAP:
+		munmap(f->R.rdi);
 		break;
 
 	default:

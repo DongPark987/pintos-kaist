@@ -961,28 +961,25 @@ lazy_load_segment(struct page *page, void *aux)
 	off_t ofs = lf->ofs;
 	bool writable = lf->writable;
 
-	// printf("한다 레이지 upage: %p, 읽을위치 %d\n",page->va,ofs);
-	// ASSERT(ofs % PGSIZE == 0);
-
 	file_seek(file, ofs);
 
 	/* Do calculate how to fill this page.
 	 * We will read PAGE_READ_BYTES bytes from FILE
 	 * and zero the final PAGE_ZERO_BYTES bytes. */
-	size_t read_bytes = lf->read_bytes;
-	size_t zero_bytes = lf->zero_bytes;
+	size_t page_read_bytes = lf->page_read_bytes;
+	size_t page_zero_bytes = lf->page_zero_bytes;
 
 	uint8_t *kpage = page->frame->kva;
 	if (kpage == NULL)
 		return false;
 
 	/* Load this page. */
-	if (file_read(file, kpage, read_bytes) != (int)read_bytes)
+	if (file_read(file, kpage, page_read_bytes) != (int)page_read_bytes)
 	{
 		// palloc_free_page(kpage);
 		return false;
 	}
-	memset(kpage + read_bytes, 0, zero_bytes);
+	memset(kpage + page_read_bytes, 0, page_zero_bytes);
 
 	// printf("페이지\n");
 	// printf("끝 레이지\n\n");
@@ -1043,8 +1040,8 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
 		ofs_curr += page_read_bytes;
 		// printf("읽을 위치 %d\n",file_tell(file));
 
-		aux->read_bytes = read_bytes;
-		aux->zero_bytes = zero_bytes;
+		aux->page_read_bytes = page_read_bytes;
+		aux->page_zero_bytes = page_zero_bytes;
 		aux->writable = writable;
 
 		if (!vm_alloc_page_with_initializer(VM_ANON, upage,

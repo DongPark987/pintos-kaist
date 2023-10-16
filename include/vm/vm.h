@@ -43,11 +43,12 @@ struct thread;
 struct lazy_file
 {
     off_t ofs;
-    uint32_t read_bytes;
-    uint32_t zero_bytes;
+    uint32_t page_read_bytes;
+    uint32_t page_zero_bytes;
     bool writable;
 
 };
+
 
 /* The representation of "page".
  * This is kind of "parent class", which has four "child class"es, which are
