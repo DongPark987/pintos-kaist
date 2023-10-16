@@ -76,6 +76,11 @@ dir_get_inode (struct dir *dir) {
  * if EP is non-null, and sets *OFSP to the byte offset of the
  * directory entry if OFSP is non-null.
  * otherwise, returns false and ignores EP and OFSP. */
+/* 디렉토리(DIR)에서 주어진 이름(NAME)을 가진 파일을 찾습니다.
+ * 성공적으로 파일을 찾았을 경우, true를 반환하며, EP가 non-null인 경우
+ * EP를 해당 디렉토리 엔트리로 설정하고, OFSP가 non-null인 경우
+ * OFSP를 디렉토리 엔트리의 바이트 오프셋으로 설정합니다.
+ * 그렇지 않은 경우, false를 반환하고 EP와 OFSP는 무시됩니다. */
 static bool
 lookup (const struct dir *dir, const char *name,
 		struct dir_entry *ep, off_t *ofsp) {

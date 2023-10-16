@@ -46,7 +46,15 @@ anon_swap_out (struct page *page) {
 }
 
 /* Destroy the anonymous page. PAGE will be freed by the caller. */
+/* 익명 페이지를 파괴합니다. 페이지 자체는 호출자에 의해 해제될 것입니다. */
 static void
 anon_destroy (struct page *page) {
-	struct anon_page *anon_page = &page->anon;
+  // 페이지의 익명 페이지 구조체를 가져옵니다.
+  struct anon_page *anon_page = &page->anon;
+  
+  // 페이지와 관련된 프레임이 존재하는 경우, 프레임의 페이지 포인터를 NULL로
+  // 설정합니다.
+  if (page->frame)
+    page->frame->page = NULL;
+  free(page->frame);
 }

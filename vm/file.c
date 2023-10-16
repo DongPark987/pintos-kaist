@@ -41,9 +41,17 @@ file_backed_swap_out (struct page *page) {
 }
 
 /* Destory the file backed page. PAGE will be freed by the caller. */
+/* 파일로 지원되는 페이지를 파괴합니다. 페이지 자체는 호출자에 의해 해제될
+ * 것입니다. */
 static void
 file_backed_destroy (struct page *page) {
-	struct file_page *file_page UNUSED = &page->file;
+  // 페이지의 파일 페이지 구조체를 가져옵니다.
+  struct file_page *file_page UNUSED = &page->file;
+  // 페이지와 관련된 프레임이 존재하는 경우, 해당 프레임의 페이지 포인터를
+  // NULL로 설정합니다.
+  if (page->frame)
+    page->frame->page = NULL;
+  free(page->frame);
 }
 
 /* Do the mmap */

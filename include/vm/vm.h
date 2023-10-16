@@ -1,8 +1,9 @@
 #ifndef VM_VM_H
 #define VM_VM_H
-#include <stdbool.h>
+#include "lib/kernel/list.h"
 #include "threads/palloc.h"
-
+#include <stdbool.h>
+#include <hash.h>
 enum vm_type {
 	/* page not initialized */
 	VM_UNINIT = 0,
@@ -45,6 +46,9 @@ struct page {
 	void *va;              /* Address in terms of user space */
 	struct frame *frame;   /* Back reference for frame */
 
+	/* 해시테이블에 기록하기 위한 elem */
+	struct hash_elem hash_elem;
+	bool writable;
 	/* Your implementation */
 
 	/* Per-type data are binded into the union.
@@ -85,6 +89,17 @@ struct page_operations {
  * We don't want to force you to obey any specific design for this struct.
  * All designs up to you for this. */
 struct supplemental_page_table {
+	struct hash hash_pt;
+};
+
+struct aux{
+  void *va;
+//   bool is_loaded;
+  bool writable;
+  struct file *file;
+  off_t ofs;
+  uint32_t read_bytes;
+  uint32_t zero_bytes;
 };
 
 #include "threads/thread.h"
@@ -108,5 +123,8 @@ bool vm_alloc_page_with_initializer (enum vm_type type, void *upage,
 void vm_dealloc_page (struct page *page);
 bool vm_claim_page (void *va);
 enum vm_type page_get_type (struct page *page);
-
+bool page_less(const struct hash_elem *a_, const struct hash_elem *b_,
+               void *aux UNUSED) ;
+unsigned page_hash(const struct hash_elem *p_, void *aux UNUSED);
+void clear_func(struct hash_elem *elem, void *aux);
 #endif  /* VM_VM_H */
