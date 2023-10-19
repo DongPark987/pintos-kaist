@@ -1,9 +1,10 @@
 #ifndef VM_VM_H
 #define VM_VM_H
 #include "lib/kernel/list.h"
+#include "threads/mmu.h"
 #include "threads/palloc.h"
-#include <stdbool.h>
 #include <hash.h>
+#include <stdbool.h>
 enum vm_type {
 	/* page not initialized */
 	VM_UNINIT = 0,
@@ -92,11 +93,10 @@ struct supplemental_page_table {
 	struct hash hash_pt;
 };
 
-struct aux{
-  void *va;
-//   bool is_loaded;
-  bool writable;
+struct lazy_aux{
   struct file *file;
+
+  bool writable;
   off_t ofs;
   uint32_t read_bytes;
   uint32_t zero_bytes;

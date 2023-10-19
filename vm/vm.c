@@ -56,6 +56,7 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void *upage,
 
   /* Check wheter the upage is already occupied or not. */
   if (spt_find_page(spt, upage) == NULL) {
+    // printf("왔냐vm으로\n\n");
 
     /* TODO: Create the page, fetch the initialier according to the VM type,
      * TODO: and then create "uninit" page struct by calling uninit_new. You
@@ -68,22 +69,24 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void *upage,
     /* TODO: 페이지를 보조 페이지 테이블에 삽입합니다. */
 
     struct page *newpage = (struct page *)calloc(1, sizeof(struct page));
-    // if (newpage == NULL) {
-    //   return false;
-    // }
+    if (newpage == NULL) {
+      return false;
+    }
 
     void *round_page = pg_round_down(upage);
 
     switch (type) {
     case VM_ANON:
       uninit_new(newpage, round_page, init, type, aux, anon_initializer);
-
+      newpage->writable = writable;
       break;
     case VM_UNINIT:
       uninit_new(newpage, round_page, init, type, aux, NULL);
+      newpage->writable = writable;
       break;
     case VM_FILE:
-      uninit_new(newpage, round_page, init, type, aux, NULL);
+      uninit_new(newpage, round_page, init, type, aux, file_backed_initializer);
+      newpage->writable = writable;
       break;
     default:
       // free(newpage);
@@ -94,6 +97,7 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void *upage,
       // free(newpage);
       return false;
     }
+    // hash_insert(&spt->hash_pt, &newpage->hash_elem);
     return true;
   }
   // return true;
@@ -107,25 +111,18 @@ err:
  */
 struct page *spt_find_page(struct supplemental_page_table *spt UNUSED,
                            void *va UNUSED) {
-  // struct page *page = NULL;
-  /* TODO: Fill this function. */
-
   if (spt == NULL || va == NULL) // 인자가 제대로 주어졌는지 예외 처리
     return NULL;
+
   struct page *page = (struct page *)malloc(sizeof(struct page));
   page->va = pg_round_down(va);
 
-  // page.va = va;
   // hash_find함수로 찾고 싶은 hash_elem을 검색해서 반환
   struct hash_elem *e = hash_find(&spt->hash_pt, &page->hash_elem);
   free(page);
-  // 위 hash_elem을 이용해서 원하는 page 구조체를 찾음
-  // struct page *page = hash_entry(e, struct page, hash_elem);
-  if (e == NULL) // 찾은 page가 NULL이라면 예외 처리
-    return NULL;
 
-  // return page;
-  return hash_entry(e, struct page, hash_elem);
+  // 위 hash_elem을 이용해서 원하는 page 구조체를 찾음 return page;
+  return e != NULL ? hash_entry(e, struct page, hash_elem) : NULL;
 }
 
 /* Insert PAGE into spt with validation. */
@@ -134,7 +131,6 @@ struct page *spt_find_page(struct supplemental_page_table *spt UNUSED,
 bool spt_insert_page(struct supplemental_page_table *spt UNUSED,
                      struct page *page UNUSED) {
   int succ = false;
-  /* TODO: Fill this function. */
 
   if (spt_find_page(spt, page->va) == NULL) {
     hash_insert(&spt->hash_pt, &page->hash_elem);
@@ -230,19 +226,23 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED,
                          bool not_present UNUSED) {
   struct supplemental_page_table *spt UNUSED = &thread_current()->spt;
   void *round_va = pg_round_down(addr);
-  struct page *page = spt_find_page(spt, round_va);
+  struct page *page = NULL;
 
   // 주어진 주소가 유저 영역 내에 있는지 확인합니다.
   if (addr < USER_STACK && addr > KERN_BASE)
     return false;
-  // if (page->writable == false && write == true)
+
+  // if ((!not_present) && write) {
   //   return false;
+  // }
 
   // 유저 스택의 시작과 끝을 계산합니다.
   void *stack_start = USER_STACK;
   void *stack_end = stack_start - (1 << 20);
 
   // 주어진 주소를 페이지 경계로 반올림하여 정렬합니다.
+  
+  page = spt_find_page(spt, round_va);
 
   if (page == NULL) {
     // 페이지가 페이지 테이블에 없는 경우, 스택 확장이 필요한지 확인합니다.
@@ -253,13 +253,13 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED,
     } else {
       return false;
     }
-    // 스택 확장 후, 페이지를 다시 검색합니다.
-    // if (page != NULL) {
-    //   if (page->writable == false && write == true)
-    //     return false;
-    // }else
-    //   return false;
+  } else {
+    if (page->writable == false && write == true) {
+      return false;
+    }
   }
+
+  // 스택 확장 후, 페이지를 다시 검색합니다.
   page = spt_find_page(spt, round_va);
 
   return vm_do_claim_page(page);
@@ -314,7 +314,7 @@ static bool vm_do_claim_page(struct page *page) {
   void *va = page->va;
   void *pa = frame->kva;
 
-  if (!pml4_set_page(my_pml4, page->va, frame->kva, true)) {
+  if (!pml4_set_page(my_pml4, page->va, frame->kva, page->writable)) {
     frame->page = NULL; // 페이지 연결 해제
     page->frame = NULL; // 프레임 연결 해제
     return false;
@@ -335,6 +335,7 @@ void supplemental_page_table_init(struct supplemental_page_table *spt UNUSED) {
 bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED,
                                   struct supplemental_page_table *src UNUSED) {
   struct hash_iterator i;
+  struct lazy_aux *copy_aux = NULL;
 
   // 부모 프로세스의 보조 페이지 테이블(src)을 반복 순회하는 반복자를
   // 초기화합니다.
@@ -344,17 +345,27 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED,
     struct page *origin_p = hash_entry(hash_cur(&i), struct page, hash_elem);
 
     // 페이지의 유형, 가상 주소, 쓰기 가능 여부를 가져옵니다.
-    enum vm_type type = page_get_type(origin_p); // vm_anon
+    enum vm_type type = origin_p->operations->type;
     void *upage = origin_p->va;
     bool writable = origin_p->writable;
 
-    if (origin_p->operations->type == VM_UNINIT) {
+    if (type == VM_UNINIT) {
       // 페이지가 초기화되지 않은 상태인 경우, 초기화 함수와 보조 데이터를
       // 사용하여 페이지를 할당합니다.
       vm_initializer *init = origin_p->uninit.init;
       void *aux = origin_p->uninit.aux;
 
-      if (!vm_alloc_page_with_initializer(type, upage, writable, init, aux))
+      // 부모 process의 aux가 자식 process의 aux보다 먼저 free되는걸 방지하기
+      // 위해서 복사
+      copy_aux = calloc(1, sizeof(struct lazy_aux));
+      if (copy_aux == NULL) {
+        goto err;
+      }
+
+      memcpy(copy_aux, aux, sizeof(struct lazy_aux));
+
+      if (!vm_alloc_page_with_initializer(VM_ANON, upage, writable, init,
+                                          copy_aux))
         goto err;
     } else {
       // 페이지가 초기화된 상태인 경우, 페이지를 할당하고 데이터를 복사합니다.
@@ -365,11 +376,13 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED,
         goto err;
 
       // 페이지 프레임의 내용을 원본에서 복사합니다.
-      memcpy(upage, origin_p->frame->kva, PGSIZE);
+     struct page *child_page = spt_find_page(dst, upage);
+      memcpy(child_page->frame->kva, origin_p->frame->kva, PGSIZE);
     }
   }
   return true;
 err:
+  free(copy_aux);
   return false;
 }
 

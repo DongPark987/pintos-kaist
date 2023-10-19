@@ -23,8 +23,8 @@
 #ifdef VM
 #include "vm/vm.h"
 #endif
-// #define VM
-// #include "vm/vm.h"
+#define VM
+#include "vm/vm.h"
 
 static void process_cleanup(void);
 static bool load(const char *file_name, struct intr_frame *if_);
@@ -898,10 +898,10 @@ static bool lazy_load_segment(struct page *page, void *aux) {
   /* TODO: 이 함수를 호출할 때 VA(가상 주소)는 사용 가능합니다. */
   // 아래는 임시로
   struct thread *curr = thread_current();
-  struct aux *my_if = (struct aux *)aux;
+  struct lazy_aux *my_if = (struct lazy_aux *)aux;
   struct file *file = my_if->file;
   off_t ofs = my_if->ofs;
-  void *va = my_if->va;
+  // void *va = my_if->va;
   uint32_t read_bytes = my_if->read_bytes;
   uint32_t zero_bytes = my_if->zero_bytes;
   bool writable = my_if->writable;
@@ -936,6 +936,7 @@ static bool lazy_load_segment(struct page *page, void *aux) {
   // if (!pml4_set_page(&curr->pml4, va, kpage, my_if->writable)) {
   //   return false;
   // }
+  free(aux);
   return true;
 }
 
@@ -982,22 +983,17 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
   // 파일 오프셋(ofs)이 페이지 크기(PGSIZE)로 정확하게 정렬되었는지 확인
   ASSERT(ofs % PGSIZE == 0);
   off_t read_start = ofs;
+  // uint8_t *rd_page = pg_round_down(upage); // 정렬을 하면 터짐 ㅡㅡ;
+
   // file_seek(file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) {
-    /* Do calculate how to fill this page.
-     * We will read PAGE_READ_BYTES bytes from FILE
-     * and zero the final PAGE_ZERO_BYTES bytes. */
     /* 이 페이지를 어떻게 채울지 계산합니다.
      * FILE에서 PAGE_READ_BYTES 바이트를 읽고
      * 나머지 PAGE_ZERO_BYTES 바이트는 0으로 채웁니다. */
     size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
     size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-    /* TODO: Set up aux to pass information to the lazy_load_segment. */
-    /* TODO: 느긋한 로딩(lazy_load_segment)에 정보를 전달하기 위해 aux를
-     * 설정합니다.
-     */
-    struct aux *aux = malloc(sizeof(struct aux));
+    struct lazy_aux *aux = (struct lazy_aux *)calloc(1, sizeof(struct lazy_aux));
     if (aux == NULL) {
       return false;
     }
@@ -1009,7 +1005,8 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
     aux->file = file;
     aux->ofs = read_start;
 
-    uint8_t rd_page = pg_round_down(upage);
+
+    // uint8_t rd_page = pg_round_down(upage);
 
     // 가상 메모리에 페이지를 할당, 페이지 초기화 함수(lazy_load_segment)전달
     if (!vm_alloc_page_with_initializer(VM_ANON, upage, writable,
@@ -1031,7 +1028,7 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
 static bool setup_stack(struct intr_frame *if_) {
   bool success = false;
   void *stack_bottom = (void *)(((uint8_t *)USER_STACK) - PGSIZE);
-  struct thread *curr = thread_current();
+  // struct thread *curr = thread_current();
   /* TODO: Map the stack on stack_bottom and claim the page immediately.
    * TODO: If success, set the rsp accordingly.
    * TODO: You should mark the page is stack. */
@@ -1045,15 +1042,6 @@ static bool setup_stack(struct intr_frame *if_) {
   // uint8_t *kpage = vm_alloc_page(VM_ANON, stack_bottom, true);
   // uint8_t *kpage = palloc_get_page(PAL_USER | PAL_ZERO);
 
-  // if (kpage != NULL) {
-  //   uint8_t rd_page = pg_round_down(stack_bottom);
-  //   success = (pml4_set_page(curr->pml4, rd_page, kpage, true));
-  //   if (success)
-  //     if_->rsp = (uint64_t)USER_STACK;
-  //   else
-  //     // vm_dealloc_page(kpage);
-  //     palloc_free_page(kpage);
-  // }
   if (vm_alloc_page(VM_ANON, stack_bottom, true)) {
     if (vm_claim_page(stack_bottom)) {
       if_->rsp = (uint64_t)USER_STACK;

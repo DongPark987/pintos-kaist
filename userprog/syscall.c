@@ -7,6 +7,7 @@
 
 #include "filesys/directory.h"
 #include "filesys/file.h"
+#include "vm/file.h"
 #include "filesys/filesys.h"
 
 #include "userprog/process.h"
@@ -146,6 +147,9 @@ int fd_read(int fd, void *buffer, size_t size)
 {
 	struct thread *curr = thread_current();
 	/* 유효하지 않은 fd */
+	if(spt_find_page(&curr->spt, buffer)->writable == 0){
+		exit(-1);
+	}
 	if (fd < 0)
 		return -1;
 
@@ -291,6 +295,41 @@ unsigned fd_tell (int fd){
 	return file_tell(curr->fdt[fd].file);
 }
 
+void *mmap(void *addr, size_t length, int writable, int fd, off_t offset) {
+
+  // 파일의 시작점(offset)이 page-align되지 않았을 때
+  if (offset % PGSIZE != 0) {
+    return NULL;
+  }
+  // 가상 유저 page 시작 주소가 page-align되어있지 않을 때
+  /* failure case 2: 해당 주소의 시작점이 page-align되어 있는지 & user 영역인지
+   * & 주소값이 null인지 & length가 0이하인지*/
+  if (pg_round_down(addr) != addr || is_kernel_vaddr(addr) || addr == NULL ||
+      (long long)length <= 0) {
+    return NULL;
+  }
+  // 매핑하려는 페이지가 이미 존재하는 페이지와 겹칠 때(==SPT에 존재하는
+  // 페이지일 때)
+  if (spt_find_page(&thread_current()->spt, addr)) {
+    return NULL;
+  }
+
+  // 콘솔 입출력과 연관된 파일 디스크립터 값(0: STDIN, 1:STDOUT)일 때
+  if (fd == 0 || fd == 1) {
+    return NULL;
+  }
+  // 찾는 파일이 디스크에 없는경우
+  struct thread *curr = thread_current();
+  struct file *file = file_reopen(curr->fdt[fd].file);
+  if (file == NULL) {
+    return NULL;
+  }
+  return do_mmap(addr, length, writable, file, offset);
+}
+void munmap(void *addr) { 
+	return do_munmap(addr);
+ }
+
 /* The main system call interface */
 void syscall_handler(struct intr_frame *f UNUSED)
 {
@@ -340,11 +379,15 @@ void syscall_handler(struct intr_frame *f UNUSED)
 	case SYS_CLOSE:
 		fd_close(f->R.rdi);
 		break;
-
+	case SYS_MMAP:
+		f->R.rax = mmap(f->R.rdi, f->R.rsi, f->R.rdx, f->R.r10, f->R.r8); 
+		break;
+	case SYS_MUNMAP:
+		munmap(f->R.rdi);
+		break;
 	case SYS_DUP2:
 		f->R.rax = dup2(f->R.rdi, f->R.rsi);
 		break;
-
 	default:
 		break;
 	}
