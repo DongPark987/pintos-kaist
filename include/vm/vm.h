@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include "threads/palloc.h"
 #include "threads/mmu.h"
-
+#include "list.h"
 #include "hash.h"
 
 enum vm_type {
@@ -85,6 +85,7 @@ struct page {
 struct frame {
 	void *kva;
 	struct page *page;
+	struct list_elem elem;
 };
 
 /* The function table for page operations.

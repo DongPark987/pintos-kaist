@@ -7,12 +7,15 @@
 #include <string.h>
 #include "hash.h"
 
+struct list vm_frame_table;
+
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
 void vm_init(void)
 {
 	vm_anon_init();
 	vm_file_init();
+	list_init(&vm_frame_table);
 #ifdef EFILESYS /* For project 4 */
 	pagecache_init();
 #endif
@@ -149,6 +152,10 @@ static struct frame *vm_get_victim(void)
 {
 	struct frame *victim = NULL;
 	/* TODO: The policy for eviction is up to you. */
+	if (!list_empty(&vm_frame_table))
+	{
+		victim = list_entry(list_pop_front(&vm_frame_table), struct frame, elem);
+	}
 
 	return victim;
 }
@@ -159,8 +166,11 @@ static struct frame *vm_evict_frame(void)
 {
 	struct frame *victim UNUSED = vm_get_victim();
 	/* TODO: swap out the victim and return the evicted frame. */
-
-	return NULL;
+	// printf("희생자 찾음:%p\n", victim->kva);
+	swap_out(victim->page);
+	memset(victim->kva, 0, PGSIZE);
+	// printf("희생자 :%p\n", victim->elem);
+	return victim;
 }
 
 /* palloc() and get frame. If there is no available page, evict the page
@@ -180,12 +190,18 @@ static struct frame *vm_get_frame(void)
 	if (frame->kva == NULL)
 	{
 		free(frame);
-		return NULL;
+		frame = vm_evict_frame();
+		// printf("압수끝: %p\n",&frame->elem);
+		if (frame == NULL)
+		{
+			return NULL;
+		}
 	}
-
+	// printf("푸시백전\n");
+	list_push_back(&vm_frame_table, &frame->elem);
+	// printf("푸시백\n");
 	ASSERT(frame != NULL);
 	ASSERT(frame->page == NULL);
-	// printf("프레임 생성\n");
 	return frame;
 }
 
@@ -212,7 +228,7 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED,
 	/* TODO: Your code goes here */
 	uint8_t *upage = pg_round_down(addr);
 	// printf("스택탑: %p\n", spt->stack_top);
-	// printf("폴트 발생 %p\n",addr);
+	// printf("폴트 발생 %p\n", addr);
 	page = spt_find_page(&curr->spt, upage);
 	// printf("찾았나%p\n", page);
 	// printf("rsp:%p, addr: %p\n",f->rsp,addr);
@@ -264,11 +280,15 @@ bool vm_claim_page(void *va UNUSED)
 	struct thread *curr = thread_current();
 	struct supplemental_page_table *spt = &curr->spt;
 	uint8_t *page = NULL;
-	if (!vm_alloc_page(VM_ANON, rd_upage, true))
-		return false;
 	page = spt_find_page(spt, rd_upage);
 	if (page == NULL)
-		return false;
+	{
+		if (!vm_alloc_page(VM_ANON, rd_upage, true))
+			return false;
+		page = spt_find_page(spt, rd_upage);
+		if (page == NULL)
+			return false;
+	}
 
 	return vm_do_claim_page(page);
 }
@@ -339,7 +359,8 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED, st
 			memcpy(copy_frame->kva, p->frame->kva, PGSIZE);
 			copy_page->frame = copy_frame;
 			copy_frame->page = copy_page;
-			if(page_get_type(p)==VM_FILE){
+			if (page_get_type(p) == VM_FILE)
+			{
 				copy_page->file.file = file_duplicate(p->file.file);
 			}
 			pml4_set_page(curr->pml4, copy_page->va, copy_frame->kva, p->writable);
@@ -362,18 +383,18 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED, st
 				if (anon_lazy_file == NULL)
 					goto err;
 				memcpy(anon_lazy_file, p->uninit.aux, sizeof(struct lazy_file));
-			copy_page->uninit.aux = anon_lazy_file;
+				copy_page->uninit.aux = anon_lazy_file;
 
 				break;
 			case VM_FILE:
 				/* code */
 				// aux_size = sizeof(struct lazy_mmap);
-				struct lazy_mmap* original_mmap_lazy = p->uninit.aux;
-				struct lazy_mmap* mmap_lazy_file = malloc(sizeof(struct lazy_mmap));
+				struct lazy_mmap *original_mmap_lazy = p->uninit.aux;
+				struct lazy_mmap *mmap_lazy_file = malloc(sizeof(struct lazy_mmap));
 				if (mmap_lazy_file == NULL)
 					goto err;
 				memcpy(mmap_lazy_file, original_mmap_lazy, sizeof(struct lazy_mmap));
-				if(original_mmap_lazy->file!=NULL)
+				if (original_mmap_lazy->file != NULL)
 					mmap_lazy_file->file = file_duplicate(original_mmap_lazy->file);
 				copy_page->uninit.aux = mmap_lazy_file;
 

@@ -39,14 +39,53 @@ bool file_backed_initializer(struct page *page, enum vm_type type, void *kva)
 static bool
 file_backed_swap_in(struct page *page, void *kva)
 {
-	struct file_page *file_page UNUSED = &page->file;
+	struct thread *curr = thread_current();
+	struct supplemental_page_table *spt = &curr->spt;
+	// printf("스왑인 파일 페이지: %p\n",page->va);
+	// struct file *file = lm->file;
+	struct file *file = page->file.file != NULL ? page->file.file : page->file.head_page->file.file;
+
+	off_t ofs = page->file.offset;
+	bool writable = page->writable;
+	if (ofs <= file_length(file))
+	{
+		file_seek(file, ofs);
+
+		/* Do calculate how to fill this page.
+		 * We will read PAGE_READ_BYTES bytes from FILE
+		 * and zero the final PAGE_ZERO_BYTES bytes. */
+		size_t page_read_bytes = page->file.page_length;
+		uint8_t *kpage = page->frame->kva;
+
+		if (kpage == NULL)
+			return false;
+
+		file_read(file, kpage, page_read_bytes);
+		/* Load this page. */
+	}
+
+	return true;
 }
 
 /* Swap out the page by writeback contents to the file. */
 static bool
 file_backed_swap_out(struct page *page)
 {
+	// printf("아웃 %p\n", page->va);
 	struct file_page *file_page UNUSED = &page->file;
+	struct thread *curr = thread_current();
+	struct supplemental_page_table *spt = &curr->spt;
+	struct file *file = page->file.head_page == NULL ? page->file.file : spt_find_page(spt, page->va)->file.file;
+	if (pml4_is_dirty(curr->pml4, page->va))
+	{
+		file_seek(file, page->file.offset);
+		file_write(file, page->va, page->file.page_length);
+	}
+	pml4_clear_page(curr->pml4, page->va);
+	page->frame->page = NULL;
+	page->frame = NULL;
+	// printf("아웃 성공\n");
+	return true;
 }
 
 /* Destory the file backed page. PAGE will be freed by the caller. */
@@ -54,7 +93,7 @@ static void
 file_backed_destroy(struct page *page)
 {
 	// do_munmap(page->file.addr);
-	if(page->va == 0)
+	if (page->va == 0)
 		return;
 	struct thread *curr = thread_current();
 	struct supplemental_page_table *spt = &curr->spt;
@@ -151,8 +190,7 @@ void do_munmap(void *addr)
 		goto err;
 	struct file_page *file_page = &page->file;
 
-	// bool is_dirty;
-
+	// printf("문맵시작%p\n",addr);
 	// ASSERT(pg_ofs(upage) == 0);
 	// ASSERT(addr % PGSIZE == 0);
 	size_t destroy_bytes = file_page->total_length;
@@ -163,6 +201,12 @@ void do_munmap(void *addr)
 		// spt_remove_page()
 		if (curr_page == NULL)
 			goto err;
+
+		if (curr_page->frame == NULL&&VM_TYPE(curr_page->operations->type)!=VM_UNINIT){
+			curr_page->file.file = file;
+			vm_claim_page(curr_page->va);
+		}
+
 		if (pml4_is_dirty(curr->pml4, upage))
 		{
 			file_seek(file, curr_page->file.offset);
@@ -189,28 +233,29 @@ bool *do_lazy_mmap(struct page *page, void *aux)
 	/* TODO: VA is available when calling this function. */
 	struct thread *curr = thread_current();
 	struct supplemental_page_table *spt = &curr->spt;
-
 	struct lazy_mmap *lm = aux;
+	// printf("레이지 파일 페이지: %p\n",page->va);
 	// struct file *file = lm->file;
 	struct file *file = page->file.head_page == NULL ? page->file.file : page->file.head_page->file.file;
 
 	off_t ofs = lm->offset;
 	bool writable = lm->writable;
-	file_seek(file, ofs);
+	if (ofs <= file_length(file))
+	{
+		file_seek(file, ofs);
 
-	/* Do calculate how to fill this page.
-	 * We will read PAGE_READ_BYTES bytes from FILE
-	 * and zero the final PAGE_ZERO_BYTES bytes. */
-	size_t page_read_bytes = lm->page_read_bytes;
-	uint8_t *kpage = page->frame->kva;
+		/* Do calculate how to fill this page.
+		 * We will read PAGE_READ_BYTES bytes from FILE
+		 * and zero the final PAGE_ZERO_BYTES bytes. */
+		size_t page_read_bytes = lm->page_read_bytes;
+		uint8_t *kpage = page->frame->kva;
 
-	if (kpage == NULL)
-		return false;
+		if (kpage == NULL)
+			return false;
 
-	file_read(file, kpage, page_read_bytes);
-	/* Load this page. */
-
-	// printf("페이지\n");
+		file_read(file, kpage, page_read_bytes);
+		/* Load this page. */
+	}
 
 	free(aux);
 	return true;
