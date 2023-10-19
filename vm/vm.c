@@ -72,7 +72,7 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void *upage,
 
 		/* TODO: 페이지를 spt에 삽입하십시오. */
 
-		struct page *t_page = (struct page *)calloc(1,sizeof(struct page));
+		struct page *t_page = (struct page *)calloc(1, sizeof(struct page));
 		if (t_page == NULL)
 			goto err;
 		switch (type)
@@ -89,6 +89,7 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void *upage,
 		case VM_FILE:
 			/* code */
 			uninit_new(t_page, rd_upage, init, type, aux, file_backed_initializer);
+			t_page->writable = writable;
 			break;
 		case VM_PAGE_CACHE:
 			/* code */
@@ -102,6 +103,8 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void *upage,
 		hash_insert(&spt->hash_pt, &t_page->hash_elem);
 		return true;
 	}
+	else
+		goto err;
 	return true;
 
 err:
@@ -171,7 +174,7 @@ static struct frame *vm_get_frame(void)
 	frame = malloc(sizeof(struct frame));
 	if (frame == NULL)
 		return NULL;
-	uint8_t *kpage = palloc_get_page(PAL_USER|PAL_ZERO);
+	uint8_t *kpage = palloc_get_page(PAL_USER | PAL_ZERO);
 	frame->kva = kpage;
 	frame->page = NULL;
 	if (frame->kva == NULL)
@@ -208,9 +211,8 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED,
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
 	uint8_t *upage = pg_round_down(addr);
-	// printf("%s 폴트 페이지 주소: %p\n", curr->name, upage);
 	// printf("스택탑: %p\n", spt->stack_top);
-
+	// printf("폴트 발생 %p\n",addr);
 	page = spt_find_page(&curr->spt, upage);
 	// printf("찾았나%p\n", page);
 	// printf("rsp:%p, addr: %p\n",f->rsp,addr);
@@ -221,17 +223,18 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED,
 		return true;
 	}
 
-
 	if (addr < USER_STACK && addr > KERN_BASE)
 		return false;
 
-	if (page != NULL){
-		if(page->writable == false && write == true)
+	if (page != NULL)
+	{
+		if (page->writable == false && write == true)
 			return false;
-	}else{
+	}
+	else
+	{
 		return false;
 	}
-
 
 	// // printf("aaa:%p\n", upage);
 	// uint64_t *pte = pml4e_walk(curr->pml4, addr, 0);
@@ -313,7 +316,7 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED, st
 	struct thread *curr = thread_current();
 	struct page *copy_page = NULL;
 	struct frame *copy_frame = NULL;
-	struct lazy_file *copy_lazy_file = NULL;
+	// void *lazy_file = NULL;
 
 	hash_first(&i, &src->hash_pt);
 	while (hash_next(&i))
@@ -336,32 +339,72 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED, st
 			memcpy(copy_frame->kva, p->frame->kva, PGSIZE);
 			copy_page->frame = copy_frame;
 			copy_frame->page = copy_page;
+			if(page_get_type(p)==VM_FILE){
+				copy_page->file.file = file_duplicate(p->file.file);
+			}
 			pml4_set_page(curr->pml4, copy_page->va, copy_frame->kva, p->writable);
 			// printf("페이지 복사해서 넣는다. %p\n", new_page->va);
 		}
 		else
 		{
 			/* 다른 fork 된 프로세스가 먼저 lazy_load 할 경우 aux가 free 되는 경우를 방지  */
-			copy_lazy_file = malloc(sizeof(struct lazy_file));
-			if (copy_lazy_file == NULL)
-				goto err;
-			memcpy(copy_lazy_file, p->uninit.aux, sizeof(struct lazy_file));
-			copy_page->uninit.aux = copy_lazy_file;
+			size_t aux_size = 0;
+			switch (p->uninit.type)
+			{
+			case VM_UNINIT:
+				/* code */
+
+				break;
+			case VM_ANON:
+				/* code */
+				// aux_size = sizeof(struct lazy_file);
+				struct lazy_file *anon_lazy_file = malloc(sizeof(struct lazy_file));
+				if (anon_lazy_file == NULL)
+					goto err;
+				memcpy(anon_lazy_file, p->uninit.aux, sizeof(struct lazy_file));
+			copy_page->uninit.aux = anon_lazy_file;
+
+				break;
+			case VM_FILE:
+				/* code */
+				// aux_size = sizeof(struct lazy_mmap);
+				struct lazy_mmap* original_mmap_lazy = p->uninit.aux;
+				struct lazy_mmap* mmap_lazy_file = malloc(sizeof(struct lazy_mmap));
+				if (mmap_lazy_file == NULL)
+					goto err;
+				memcpy(mmap_lazy_file, original_mmap_lazy, sizeof(struct lazy_mmap));
+				if(original_mmap_lazy->file!=NULL)
+					mmap_lazy_file->file = file_duplicate(original_mmap_lazy->file);
+				copy_page->uninit.aux = mmap_lazy_file;
+
+				break;
+			case VM_PAGE_CACHE:
+				/* code */
+				break;
+
+			default:
+				break;
+			}
+			// lazy_file = malloc(aux_size);
+			// if (lazy_file == NULL)
+			// 	goto err;
+			// memcpy(lazy_file, p->uninit.aux, aux_size);
 		}
 		spt_insert_page(dst, copy_page);
 	}
 	return true;
 err:
 	va_exeception_free(copy_page);
-	va_exeception_free(copy_lazy_file);
 	return false;
 }
 
 void hash_free_page(struct hash_elem *h_page, void *aux UNUSED)
 {
 	struct page *page = hash_entry(h_page, struct page, hash_elem);
+	vm_dealloc_page(page);
+
 	// destroy(page);
-	free(page);
+	// free(page);
 }
 
 /* Free the resource hold by the supplemental page table */

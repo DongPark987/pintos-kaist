@@ -268,6 +268,10 @@ pml4_set_page (uint64_t *pml4, void *upage, void *kpage, bool rw) {
  * directory PD.  Later accesses to the page will fault.  Other
  * bits in the page table entry are preserved.
  * UPAGE need not be mapped. */
+/* 사용자 가상 페이지 UPAGE를 페이지 디렉토리 PD에서 "존재하지 않음"으로 표시합니다.
+ * 이후에 페이지에 접근하면 페이지 부재(fault)가 발생합니다.
+ * 페이지 테이블 엔트리의 다른 비트는 보존됩니다.
+ * UPAGE는 매핑되어 있지 않아도 됩니다. */
 void
 pml4_clear_page (uint64_t *pml4, void *upage) {
 	uint64_t *pte;
@@ -287,6 +291,9 @@ pml4_clear_page (uint64_t *pml4, void *upage) {
  * that is, if the page has been modified since the PTE was
  * installed.
  * Returns false if PML4 contains no PTE for VPAGE. */
+/* PML4의 가상 페이지 VPAGE에 대한 페이지 테이블 엔트리(PTE)가 더티 상태(수정된 이후로 변경됨)인 경우 true를 반환합니다.
+ * 즉, PTE가 설치된 이후 페이지가 수정되었을 때 true를 반환합니다.
+ * 만약 PML4에 VPAGE에 대한 PTE가 없는 경우 false를 반환합니다. */
 bool
 pml4_is_dirty (uint64_t *pml4, const void *vpage) {
 	uint64_t *pte = pml4e_walk (pml4, (uint64_t) vpage, false);

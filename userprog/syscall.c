@@ -322,9 +322,14 @@ static void *mmap(void *addr, size_t length, int writable, int fd, off_t offset)
 {
 	struct thread *curr = thread_current();
 	struct supplemental_page_table *spt = &curr->spt;
+	if (is_kernel_vaddr(addr) || (long)length <= (long)0)
+		return NULL;
+	
+	if (addr == NULL || offset !=pg_round_down(offset))
+		return NULL;
 	uint64_t *upage = pg_round_down(addr);
-	if (addr != upage || spt_find_page(spt, upage) != NULL 
-		|| curr->fdt[fd].file == NULL || fd == 0 || fd == 1)
+	
+	if (addr != upage || spt_find_page(spt, upage) != NULL || curr->fdt[fd].file == NULL || fd == 0 || fd == 1)
 		return NULL;
 
 	return do_mmap(addr, length, writable, file_reopen(curr->fdt[fd].file), offset);
@@ -332,11 +337,29 @@ static void *mmap(void *addr, size_t length, int writable, int fd, off_t offset)
 
 static void munmap(void *addr)
 {
+	// 	struct thread *curr = thread_current();
+	// 	// pml4_set_dirty(curr->pml4,addr,true);
+	// 	printf("더티하니?%d\n", pml4_is_dirty(curr->pml4, addr));
+	// 	uint8_t *upage = pg_round_down(addr);
+	// 	uint64_t *pte = pml4e_walk(curr->pml4, upage, 0);
+	// 	if (*pte != NULL && !is_writable(pte))
+	// 		return;
+	//   memcpy (addr, "hello\n", strlen ("hello\n"));
 
-	// struct thread *curr = thread_current();
-	// if (curr->fdt[fd].file == 0)
-	// 	return 0;
-	// return file_tell(curr->fdt[fd].file);
+	// 	printf("라이터블함\n");
+	struct thread *curr = thread_current();
+	struct supplemental_page_table *spt = &curr->spt;
+	struct page *page = spt_find_page(spt, addr);
+	if (page == NULL || page->file.upage != addr)
+		return;
+	do_munmap(addr);
+	// vm_dealloc_page(page);
+	// destroy(page);
+}
+
+static int fd_remove(char *str)
+{
+	return filesys_remove(str);
 }
 
 /* The main system call interface */
@@ -365,7 +388,7 @@ void syscall_handler(struct intr_frame *f UNUSED)
 		f->R.rax = file_create(f->R.rdi, f->R.rsi);
 		break;
 	case SYS_REMOVE:
-
+		f->R.rax = fd_remove(f->R.rdi);
 		break;
 	case SYS_OPEN:
 		f->R.rax = fd_open(f->R.rdi);
