@@ -187,6 +187,7 @@ static struct frame *vm_get_frame(void)
 	uint8_t *kpage = palloc_get_page(PAL_USER | PAL_ZERO);
 	frame->kva = kpage;
 	frame->page = NULL;
+	frame->link_cnt = 0;
 	if (frame->kva == NULL)
 	{
 		free(frame);
@@ -244,6 +245,20 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED,
 
 	if (page != NULL)
 	{
+		if (page->writable == true && write == true&& VM_TYPE(page->operations->type) != VM_UNINIT)
+		{
+			// printf("%s %p 왔니, 타임: %d\n",curr->name,upage,page->operations->type);
+			struct frame *copy_frame;
+			copy_frame = vm_get_frame();
+			memcpy(copy_frame->kva, page->frame->kva, PGSIZE);
+			pml4_clear_page(curr->pml4, page->va);
+			page->frame->link_cnt--;
+
+			page->frame = copy_frame;
+			copy_frame->page = page;
+			pml4_set_page(curr->pml4, page->va, copy_frame->kva, page->writable);
+			return true;
+		}
 		if (page->writable == false && write == true)
 			return false;
 	}
@@ -336,7 +351,6 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED, st
 	struct thread *curr = thread_current();
 	struct page *copy_page = NULL;
 	struct frame *copy_frame = NULL;
-	// void *lazy_file = NULL;
 
 	hash_first(&i, &src->hash_pt);
 	while (hash_next(&i))
@@ -357,12 +371,19 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED, st
 			if (copy_frame == NULL)
 				goto err;
 			memcpy(copy_frame->kva, p->frame->kva, PGSIZE);
+			// copy_frame = calloc(1, sizeof(struct frame));
+			// copy_frame->kva = p->frame->kva;
+			// p->frame->link_cnt++;
 			copy_page->frame = copy_frame;
 			copy_frame->page = copy_page;
 			if (page_get_type(p) == VM_FILE)
 			{
 				copy_page->file.file = file_duplicate(p->file.file);
 			}
+			/* cow를 위한 부모 페이지 readonly 변경 */
+			// pml4_set_page(src->spt_pml4, p->va, p->frame->kva, false);
+			/* cow를 위한 자식 페이지 readonly 변경 */
+			// pml4_set_page(curr->pml4, copy_page->va, p->frame->kva, false);
 			pml4_set_page(curr->pml4, copy_page->va, copy_frame->kva, p->writable);
 			// printf("페이지 복사해서 넣는다. %p\n", new_page->va);
 		}
@@ -434,32 +455,6 @@ void supplemental_page_table_kill(struct supplemental_page_table *spt UNUSED)
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
 
-	// struct hash_iterator i;
-	// struct thread *curr = thread_current();
-
-	// hash_first(&i, &spt->hash_pt);
-	// while (hash_next(&i))
-	// {
-	// 	struct page *p = hash_entry(hash_cur(&i), struct page, hash_elem);
-	// 	switch (page_get_type(p))
-	// 	{
-	// 	case VM_UNINIT:
-	// 		/* code */
-	// 		// if (p->uninit.aux != NULL)
-	// 		// 	free(p->uninit.aux);
-	// 		break;
-	// 	case VM_ANON:
-	// 		break;
-	// 	case VM_FILE:
-	// 		/* code */
-	// 		break;
-	// 	case VM_PAGE_CACHE:
-	// 		/* code */
-	// 		break;
-	// 	default:
-	// 		break;
-	// 	}
-	// }
 	hash_clear(&spt->hash_pt, hash_free_page);
 	// hash_destroy(&spt->hash_pt, hash_free_page);
 }

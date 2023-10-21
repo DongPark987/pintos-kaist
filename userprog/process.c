@@ -230,6 +230,7 @@ __do_fork(void *aux)
 #ifdef VM
 	current->exe_file = file_duplicate(parent->exe_file);
 
+	parent->spt.spt_pml4 = parent->pml4;
 	supplemental_page_table_init(&current->spt);
 	if (!supplemental_page_table_copy(&current->spt, &parent->spt))
 		goto error;
@@ -477,8 +478,26 @@ void process_exit(void)
 
 	if (!curr->is_kernel)
 	{
+
 		printf("%s: exit(%d)\n", curr->name, curr->exit_code);
 
+		/* 자식 프로세서 다잉 메시지 정리 */
+		if (!list_empty(&curr->child_list))
+		{
+			struct child_info *trash;
+			for (struct list_elem *cur = list_begin(&curr->child_list); cur != list_end(&curr->child_list); cur = list_next(cur))
+			{
+				trash = list_entry(cur, struct child_info, child_elem);
+			printf("%s다잉 정리\n",curr->name);
+
+				list_remove(cur);
+				trash->child_thread->parent = NULL;
+				free(trash);
+			}
+			printf("다잉 정리끝\n");
+		}
+
+		/* 부모 프로세스에 메시지 남김 */
 		if (curr->parent != NULL)
 		{
 			curr->child_info->ret = curr->exit_code;
@@ -489,6 +508,7 @@ void process_exit(void)
 		}
 	}
 
+	/* 파일 디스크립터 테이블 정리 */
 	if (curr->fdt != NULL)
 	{
 		for (int i = 0; i < MAX_FD; i++)
@@ -502,19 +522,6 @@ void process_exit(void)
 		}
 		palloc_free_multiple(curr->fdt, 3);
 	}
-
-	if (!list_empty(&curr->child_list))
-	{
-		struct child_info *trash;
-		for (struct list_elem *cur = list_begin(&curr->child_list); cur != list_end(&curr->child_list); cur = list_next(cur))
-		{
-			trash = list_entry(cur, struct child_info, child_elem);
-			list_remove(cur);
-			trash->child_thread->parent = NULL;
-			free(trash);
-		}
-	}
-
 	process_cleanup();
 }
 
@@ -1104,7 +1111,7 @@ setup_stack(struct intr_frame *if_)
 
 	uint8_t *rd_upage = pg_round_down(stack_bottom);
 	// vm_alloc_page(VM_ANON, rd_upage, true);
-
+	// printf("시작 스택 %p\n",rd_upage);
 	success = vm_claim_page(rd_upage);
 	// 	struct page *new_page = malloc(sizeof(struct page));
 	// 	struct frame *new_frame = malloc(sizeof(struct frame));

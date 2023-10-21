@@ -75,7 +75,9 @@ file_backed_swap_out(struct page *page)
 	struct file_page *file_page UNUSED = &page->file;
 	struct thread *curr = thread_current();
 	struct supplemental_page_table *spt = &curr->spt;
-	struct file *file = page->file.head_page == NULL ? page->file.file : spt_find_page(spt, page->va)->file.file;
+	// struct file *file = page->file.head_page == NULL ? page->file.file : spt_find_page(spt, page->va)->file.file;
+	struct file *file = page->file.file != NULL ? page->file.file : page->file.head_page->file.file;
+
 	if (pml4_is_dirty(curr->pml4, page->va))
 	{
 		file_seek(file, page->file.offset);
@@ -104,6 +106,7 @@ file_backed_destroy(struct page *page)
 	}
 	else
 		head_page = page->file.head_page;
+
 	struct file *file = head_page->file.file;
 
 	void *upage = head_page->file.addr;
@@ -120,13 +123,29 @@ file_backed_destroy(struct page *page)
 		struct page *curr_page = spt_find_page(spt, upage);
 		if (curr_page == NULL)
 			curr_page = page;
-		if (pml4_is_dirty(curr->pml4, upage))
+		// printf("upage: %p, kva: %p\n", curr_page->va, curr_page->frame->kva);
+
+		// if (curr_page->frame == NULL || VM_TYPE(curr_page->operations->type) != VM_UNINIT)
+		// {
+		// 	// printf("요청한다: %p.\n", curr_page->va);
+		// 	curr_page->file.file = file;
+		// 	vm_claim_page(curr_page->va);
+		// }
+		// if (true)
+		// // if (true)
+		// {
+
+		// }
+		if (curr_page->frame != NULL)
 		{
-			file_seek(file, curr_page->file.offset);
-			file_write(file, page->va, page_destroy_bytes);
+			if (pml4_is_dirty(curr->pml4, upage))
+			{
+				file_seek(file, curr_page->file.offset);
+				file_write(file, curr_page->va, page_destroy_bytes);
+			}
+			pml4_clear_page(curr->pml4, upage);
+			palloc_free_page(curr_page->frame->kva);
 		}
-		pml4_clear_page(curr->pml4, upage);
-		palloc_free_page(curr_page->frame->kva);
 		curr_page->va = 0;
 		destroy_bytes -= page_destroy_bytes;
 		upage += PGSIZE;
@@ -185,14 +204,15 @@ void do_munmap(void *addr)
 	struct supplemental_page_table *spt = &curr->spt;
 	struct page *page = spt_find_page(spt, addr);
 	void *upage = page->file.addr;
-	struct file *file = page->file.head_page == NULL ? page->file.file : spt_find_page(spt, upage)->file.file;
+	struct file *file = page->file.file != NULL ? page->file.file : page->file.head_page->file.file;
+
+	// struct file *file = page->file.head_page == NULL ? page->file.file : spt_find_page(spt, upage)->file.file;
 	if (page == NULL)
 		goto err;
 	struct file_page *file_page = &page->file;
 
 	// printf("문맵시작%p\n",addr);
-	// ASSERT(pg_ofs(upage) == 0);
-	// ASSERT(addr % PGSIZE == 0);
+	ASSERT(pg_ofs(upage) == 0);
 	size_t destroy_bytes = file_page->total_length;
 	while (destroy_bytes > 0)
 	{
@@ -202,18 +222,30 @@ void do_munmap(void *addr)
 		if (curr_page == NULL)
 			goto err;
 
-		if (curr_page->frame == NULL&&VM_TYPE(curr_page->operations->type)!=VM_UNINIT){
-			curr_page->file.file = file;
-			vm_claim_page(curr_page->va);
+		// if (curr_page->frame == NULL && VM_TYPE(curr_page->operations->type) != VM_UNINIT)
+		// {
+		// 	curr_page->file.file = file;
+		// 	vm_claim_page(curr_page->va);
+		// }
+
+		// if (pml4_is_dirty(curr->pml4, upage))
+		// {
+		// 	file_seek(file, curr_page->file.offset);
+		// 	file_write(file, curr_page->va, page_destroy_bytes);
+		// }
+		// pml4_clear_page(curr->pml4, upage);
+		// palloc_free_page(curr_page->frame->kva);
+		if (curr_page->frame != NULL)
+		{
+			if (pml4_is_dirty(curr->pml4, upage))
+			{
+				file_seek(file, curr_page->file.offset);
+				file_write(file, curr_page->va, page_destroy_bytes);
+			}
+			pml4_clear_page(curr->pml4, upage);
+			palloc_free_page(curr_page->frame->kva);
 		}
 
-		if (pml4_is_dirty(curr->pml4, upage))
-		{
-			file_seek(file, curr_page->file.offset);
-			file_write(file, curr_page->va, page_destroy_bytes);
-		}
-		pml4_clear_page(curr->pml4, upage);
-		palloc_free_page(curr_page->frame->kva);
 		/* Advance. */
 		// printf("만든다 엠멥\n");
 		hash_delete(&curr->spt.hash_pt, &curr_page->hash_elem);
@@ -240,22 +272,22 @@ bool *do_lazy_mmap(struct page *page, void *aux)
 
 	off_t ofs = lm->offset;
 	bool writable = lm->writable;
-	if (ofs <= file_length(file))
-	{
-		file_seek(file, ofs);
+	// if (ofs <= file_length(file))
+	// {
+	// 	file_seek(file, ofs);
 
-		/* Do calculate how to fill this page.
-		 * We will read PAGE_READ_BYTES bytes from FILE
-		 * and zero the final PAGE_ZERO_BYTES bytes. */
-		size_t page_read_bytes = lm->page_read_bytes;
-		uint8_t *kpage = page->frame->kva;
+	/* Do calculate how to fill this page.
+	 * We will read PAGE_READ_BYTES bytes from FILE
+	 * and zero the final PAGE_ZERO_BYTES bytes. */
+	size_t page_read_bytes = lm->page_read_bytes;
+	uint8_t *kpage = page->frame->kva;
 
-		if (kpage == NULL)
-			return false;
-
-		file_read(file, kpage, page_read_bytes);
-		/* Load this page. */
-	}
+	if (kpage == NULL)
+		return false;
+	file_read_at(file, kpage, page_read_bytes, ofs);
+	// file_read(file, kpage, page_read_bytes);
+	/* Load this page. */
+	// }
 
 	free(aux);
 	return true;

@@ -85,6 +85,7 @@ struct page {
 struct frame {
 	void *kva;
 	struct page *page;
+	int link_cnt;
 	struct list_elem elem;
 };
 
@@ -117,7 +118,7 @@ struct page_operations {
  * 이에 대한 모든 디자인은 여러분에게 달려있습니다. */
 struct supplemental_page_table {
 	struct hash hash_pt;
-	size_t main_botom;
+	uint64_t *spt_pml4
 };
 
 #include "threads/thread.h"

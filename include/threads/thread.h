@@ -119,10 +119,10 @@ struct thread
 	int recent_cpu;
 
 	/* fork 구현 변수 */
-	struct semaphore fork_sema; // 끝
+	struct semaphore fork_sema; 
 	struct semaphore wait_sema;
-	struct list child_list; // 끝
-	struct thread *parent;	// 끝
+	struct list child_list; 
+	struct thread *parent;	
 	struct child_info *child_info;
 	struct file* exe_file;
 

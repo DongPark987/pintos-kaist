@@ -21,6 +21,8 @@
 void syscall_entry(void);
 void syscall_handler(struct intr_frame *);
 
+struct semaphore syscall_sema;
+
 /* System call.
  *
  * Previously system call services was handled by the interrupt handler
@@ -37,7 +39,7 @@ void syscall_handler(struct intr_frame *);
  * 시스템 호출을 요청하기 위한 효율적인 경로를 제공합니다. `syscall` 명령어입니다.
  *
  * Syscall 명령어는 Model Specific Register (MSR)에서 값들을 읽어와 동작합니다.
- * 자세한 내용은 매뉴얼을 참조하십시오. */
+* 자세한 내용은 매뉴얼을 참조하십시오. */
 
 #define MSR_STAR 0xc0000081			/* Segment selector msr */
 #define MSR_LSTAR 0xc0000082		/* Long mode SYSCALL target */
@@ -56,7 +58,7 @@ void syscall_init(void)
 	/* 시스템 호출 진입점이 사용자 영역 스택을 커널 모드 스택으로 교체할 때까지
 	 * 인터럽트 서비스 루틴은 어떠한 인터럽트도 처리해서는 안 됩니다.
 	 * 따라서 우리는 FLAG_FL을 마스킹하여 이를 방지합니다. */
-
+	sema_init(&syscall_sema,1);
 	write_msr(MSR_SYSCALL_MASK,
 			  FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
 }
@@ -368,21 +370,26 @@ void syscall_handler(struct intr_frame *f UNUSED)
 	// TODO: Your implementation goes here.
 	// printf ("system call!\n");
 	/* The main system call interface */
+	sema_down(&syscall_sema);
 	switch (f->R.rax)
 	{
 	case SYS_HALT:
 		power_off();
 		break;
 	case SYS_EXIT:
+		sema_up(&syscall_sema);
 		exit(f->R.rdi);
 	case SYS_FORK:
 		f->R.rax = sys_fork(f);
 		break;
 	case SYS_EXEC:
+		sema_up(&syscall_sema);
 		f->R.rax = exec(f->R.rdi);
 		break;
 	case SYS_WAIT:
+		sema_up(&syscall_sema);
 		f->R.rax = process_wait(f->R.rdi);
+		return;
 		break;
 	case SYS_CREATE:
 		f->R.rax = file_create(f->R.rdi, f->R.rsi);
@@ -427,4 +434,5 @@ void syscall_handler(struct intr_frame *f UNUSED)
 	default:
 		break;
 	}
+	sema_up(&syscall_sema);
 }

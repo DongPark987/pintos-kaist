@@ -15,12 +15,11 @@
  * 페이지 객체를 초기화하며 vm_alloc_page_with_initializer 함수에서 전달된
  * 초기화 콜백을 호출합니다. */
 
-
 #include "vm/vm.h"
 #include "vm/uninit.h"
 
-static bool uninit_initialize (struct page *page, void *kva);
-static void uninit_destroy (struct page *page);
+static bool uninit_initialize(struct page *page, void *kva);
+static void uninit_destroy(struct page *page);
 
 /* DO NOT MODIFY this struct */
 static const struct page_operations uninit_ops = {
@@ -31,28 +30,28 @@ static const struct page_operations uninit_ops = {
 };
 
 /* DO NOT MODIFY this function */
-void
-uninit_new (struct page *page, void *va, vm_initializer *init,
-		enum vm_type type, void *aux,
-		bool (*initializer)(struct page *, enum vm_type, void *)) {
-	ASSERT (page != NULL);
+void uninit_new(struct page *page, void *va, vm_initializer *init,
+				enum vm_type type, void *aux,
+				bool (*initializer)(struct page *, enum vm_type, void *))
+{
+	ASSERT(page != NULL);
 
-	*page = (struct page) {
+	*page = (struct page){
 		.operations = &uninit_ops,
 		.va = va,
 		.frame = NULL, /* no frame for now */
-		.uninit = (struct uninit_page) {
+		.uninit = (struct uninit_page){
 			.init = init,
 			.type = type,
 			.aux = aux,
 			.page_initializer = initializer,
-		}
-	};
+		}};
 }
 
 /* Initalize the page on first fault */
 static bool
-uninit_initialize (struct page *page, void *kva) {
+uninit_initialize(struct page *page, void *kva)
+{
 	struct uninit_page *uninit = &page->uninit;
 
 	// printf("언이닛 실행\n");
@@ -61,8 +60,8 @@ uninit_initialize (struct page *page, void *kva) {
 	void *aux = uninit->aux;
 
 	/* TODO: You may need to fix this function. */
-	return uninit->page_initializer (page, uninit->type, kva) &&
-		(init ? init (page, aux) : true);
+	return uninit->page_initializer(page, uninit->type, kva) &&
+		   (init ? init(page, aux) : true);
 }
 
 /* Free the resources hold by uninit_page. Although most of pages are transmuted
@@ -70,8 +69,20 @@ uninit_initialize (struct page *page, void *kva) {
  * exit, which are never referenced during the execution.
  * PAGE will be freed by the caller. */
 static void
-uninit_destroy (struct page *page) {
+uninit_destroy(struct page *page)
+{
 	struct uninit_page *uninit UNUSED = &page->uninit;
+
+	if (uninit->type == VM_FILE)
+	{
+		// printf("언이닛 디스트로이 왔다.\n");
+		// struct thread *curr = thread_current();
+		// struct supplemental_page_table *spt = &curr->spt;
+		// hash_insert(&curr->spt.hash_pt, &page->hash_elem);
+		// struct lazy_mmap *lm = page->uninit.aux;
+		// do_munmap(lm->addr);
+	}
+
 	/* TODO: Fill this function.
 	 * TODO: If you don't have anything to do, just return. */
 }

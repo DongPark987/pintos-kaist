@@ -64,6 +64,7 @@ anon_swap_out(struct page *page)
 	struct thread *curr = thread_current();
 	size_t free_sector = bitmap_scan_and_flip(used_sector, 0, 8, false);
 	// printf("빈공간: %d\n", free_sector);
+	// pml4_is_dirty(curr->pml4,page_)
 	for (int i = 0; i < 8; i++)
 		disk_write(swap_disk, free_sector + i, page->frame->kva + (512 * i));
 	anon_page->start_sector = free_sector;

@@ -147,4 +147,4 @@ make
 cd build
 source ../../activate
 
-$MMAP_UNMAP
+$PAGE_MERGE_MM
