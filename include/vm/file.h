@@ -7,16 +7,19 @@ struct page;
 enum vm_type;
 struct lazy_mmap{
   struct file *file;
-
-  bool writable;
+  struct page *head_page;
   off_t offset;
   uint32_t page_read_bytes;
   size_t length;
   void *addr;
   void *upage;
+  bool writable;
 };
 
 struct file_page {
+  struct file* file;
+  struct page *head_page;
+  off_t offset;
   size_t page_length;
   size_t total_length;
   void *addr;

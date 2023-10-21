@@ -127,4 +127,7 @@ bool page_less(const struct hash_elem *a_, const struct hash_elem *b_,
                void *aux UNUSED) ;
 unsigned page_hash(const struct hash_elem *p_, void *aux UNUSED);
 void clear_func(struct hash_elem *elem, void *aux);
+void va_exeception_free(void *f);
+struct page *page_lookup(const void *address,
+                         struct supplemental_page_table *spt);
 #endif  /* VM_VM_H */

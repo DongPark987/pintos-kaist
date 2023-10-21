@@ -188,11 +188,15 @@ PRIORITY_SEMA="pintos -v -k -T 60 -m 20   --fs-disk=10  --swap-disk=4 -- -q  -th
 PRIORITY_CONDVAR="pintos -v -k -T 60 -m 20   --fs-disk=10  --swap-disk=4 -- -q  -threads-tests -f run priority-condvar"
 PRIORITY_DONATE_CHAIN="pintos -v -k -T 60 -m 20   --fs-disk=10  --swap-disk=4 -- -q  -threads-tests -f run priority-donate-chain"
 COW_SIMPLE="pintos -v -k -T 60 -m 20   --fs-disk=10 -p tests/vm/cow/cow-simple:cow-simple --swap-disk=4 -- -q   -f run cow-simple"
+
+
+MMAP_INHERIT1="pintos --gdb --fs-disk=10 -p tests/vm/mmap-inherit:mmap-inherit -p ../../tests/vm/sample.txt:sample.txt -p tests/vm/child-inherit:child-inherit --swap-disk=4 -- -q   -f run mmap-inherit"
 # cd threads
 cd vm
 make clean
 make
 cd build
 source ../../activate
-$PT_WRITE_CODE2
+$MMAP_CLEAN
+
 

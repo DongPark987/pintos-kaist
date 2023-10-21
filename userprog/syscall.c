@@ -143,33 +143,46 @@ void fd_close(int fd)
 	curr->fd_cnt--;
 }
 
-int fd_read(int fd, void *buffer, size_t size)
-{
-	struct thread *curr = thread_current();
-	/* 유효하지 않은 fd */
-	if(spt_find_page(&curr->spt, buffer)->writable == 0){
-		exit(-1);
-	}
-	if (fd < 0)
-		return -1;
+static bool buffer_protection(void *buffer) {
+  struct thread *curr = thread_current();
+  uint8_t *upage = pg_round_down(buffer);
+  uint64_t *pte = pml4e_walk(curr->pml4, upage, 0);
+  if (*pte != NULL && !is_writable(pte))
+    return false;
+  return true;
+}
 
-	/* 표준 입출력 fd 읽기 */
-	if (curr->fdt[fd].stdio != 0)
-	{
-		if (curr->fdt[fd].stdio == STDIN_FILENO)
-			return input_getc();
-		return -1;
-	}
+static int fd_read(int fd, void *buffer, size_t size) {
+  struct thread *curr = thread_current();
+  /* 유효하지 않은 fd */
+  if (fd < 0)
+    return -1;
+  /* write 가능한 버퍼인지 검사 */
+  if (!buffer_protection(buffer))
+    exit(-1);
 
-	off_t read_size = 0;
+  // int64_t *pte = pml4e_walk(curr->pml4, buffer, 0);
+  // if (pte != NULL)
+  // {
+  // 	if (!is_writable(pte))
+  // 		exit(-1);
+  // }
 
-	if (curr->fdt[fd].file == NULL)
-		return -1;
-	// printf("아이노드: %p \n",file_get_inode_lock(curr->fdt[fd].file));
-	lock_acquire(file_get_inode_lock(curr->fdt[fd].file));
-	read_size = file_read(curr->fdt[fd].file, buffer, size);
-	lock_release(file_get_inode_lock(curr->fdt[fd].file));
-	return read_size;
+  /* 표준 입출력 fd 읽기 */
+  if (curr->fdt[fd].stdio != 0) {
+    if (curr->fdt[fd].stdio == STDIN_FILENO)
+      return input_getc();
+    return -1;
+  }
+
+  off_t read_size = 0;
+
+  if (curr->fdt[fd].file == NULL)
+    return -1;
+  lock_acquire(file_get_inode_lock(curr->fdt[fd].file));
+  read_size = file_read(curr->fdt[fd].file, buffer, size);
+  lock_release(file_get_inode_lock(curr->fdt[fd].file));
+  return read_size;
 }
 
 int fd_file_size(int fd)
@@ -326,9 +339,16 @@ void *mmap(void *addr, size_t length, int writable, int fd, off_t offset) {
   }
   return do_mmap(addr, length, writable, file, offset);
 }
-void munmap(void *addr) { 
-	return do_munmap(addr);
+void munmap(void *addr) {
+//   struct thread *curr = thread_current();
+//   struct supplemental_page_table *spt = &curr->spt;
+//   struct page *page = spt_find_page(spt, addr);
+//   if (page == NULL || page->file.upage != addr)
+//     return;
+  return do_munmap(addr);
  }
+
+static int fd_remove(char *str) { return filesys_remove(str); }
 
 /* The main system call interface */
 void syscall_handler(struct intr_frame *f UNUSED)
@@ -356,7 +376,7 @@ void syscall_handler(struct intr_frame *f UNUSED)
 		f->R.rax = file_create(f->R.rdi, f->R.rsi);
 		break;
 	case SYS_REMOVE:
-
+		f->R.rax = fd_remove(f->R.rdi);
 		break;
 	case SYS_OPEN:
 		f->R.rax = fd_open(f->R.rdi);

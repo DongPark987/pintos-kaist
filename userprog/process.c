@@ -445,7 +445,6 @@ void process_exit(void) {
    * TODO: 프로세스 종료 메시지를 구현하세요 (project2/process_termination.html
    * 참조).
    * TODO: 여기에서 프로세스 리소스 정리를 구현하는 것을 권장합니다. */
-
   if (!curr->is_kernel) {
     printf("%s: exit(%d)\n", curr->name, curr->exit_code);
 
@@ -486,7 +485,6 @@ void process_exit(void) {
 /* Free the current process's resources. */
 static void process_cleanup(void) {
   struct thread *curr = thread_current();
-
 #ifdef VM
   supplemental_page_table_kill(&curr->spt);
 #endif
