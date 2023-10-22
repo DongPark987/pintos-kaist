@@ -175,32 +175,26 @@ static struct frame *vm_evict_frame(void) {
  * 메모리가 가득 찬 경우, 이 함수는 사용 가능한 메모리 공간을 얻기 위해 프레임을
  * 대체합니다. */
 static struct frame *vm_get_frame(void) {
-  struct frame *frame = (struct frame *)malloc(sizeof(struct frame));
-  if (frame == NULL)
-    return NULL;
-  uint8_t *kpage = palloc_get_page(PAL_USER | PAL_ZERO);
-
-  // if (frame == NULL || frame->kva == NULL) {
-  //   free(frame);
-  //   PANIC("todo");
-  //   // return false;
-  // }
-
-  frame->kva = kpage;
-  frame->page = NULL;
-
-  if (frame->kva == NULL) {
-    free(frame);
-    frame = vm_evict_frame();
-
+    struct frame* frame = NULL;
+    /* TODO: Fill this function. */
+    frame = malloc(sizeof(struct frame));
     if (frame == NULL)
-      return NULL;
-  }
-  list_push_back(&vm_frame_table, &frame->elem);
-
-  ASSERT(frame != NULL); // 프레임이 할당되지 않은 경우 예외 처리
-  ASSERT(frame->page == NULL); // 프레임에 이미 페이지가 연결된 경우 예외 처리
-  return frame;
+        return NULL;
+    uint8_t* kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+    frame->kva = kpage;
+    frame->page = NULL;
+    // frame->link_cnt = 0;
+    if (frame->kva == NULL) {
+        free(frame);
+        frame = vm_evict_frame();
+        if (frame == NULL) {
+            return NULL;
+        }
+    }
+    list_push_back(&vm_frame_table, &frame->elem);
+    ASSERT(frame != NULL);
+    ASSERT(frame->page == NULL);
+    return frame;
 }
 
 /* Growing the stack. */
