@@ -59,7 +59,7 @@ anon_swap_in(struct page *page, void *kva)
 static bool
 anon_swap_out(struct page *page)
 {
-	printf("아논 아웃 %p\n",page->va);
+	// printf("아논 아웃 %p\n",page->va);
 	struct anon_page *anon_page = &page->anon;
 	struct thread *curr = thread_current();
 	size_t free_sector = bitmap_scan_and_flip(used_sector, 0, 8, false);
