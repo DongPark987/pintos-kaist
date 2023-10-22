@@ -17,6 +17,7 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+#include "vm/vm.h"
 
 void syscall_entry(void);
 void syscall_handler(struct intr_frame *);
@@ -39,7 +40,7 @@ struct semaphore syscall_sema;
  * 시스템 호출을 요청하기 위한 효율적인 경로를 제공합니다. `syscall` 명령어입니다.
  *
  * Syscall 명령어는 Model Specific Register (MSR)에서 값들을 읽어와 동작합니다.
-* 자세한 내용은 매뉴얼을 참조하십시오. */
+ * 자세한 내용은 매뉴얼을 참조하십시오. */
 
 #define MSR_STAR 0xc0000081			/* Segment selector msr */
 #define MSR_LSTAR 0xc0000082		/* Long mode SYSCALL target */
@@ -58,7 +59,7 @@ void syscall_init(void)
 	/* 시스템 호출 진입점이 사용자 영역 스택을 커널 모드 스택으로 교체할 때까지
 	 * 인터럽트 서비스 루틴은 어떠한 인터럽트도 처리해서는 안 됩니다.
 	 * 따라서 우리는 FLAG_FL을 마스킹하여 이를 방지합니다. */
-	sema_init(&syscall_sema,1);
+	sema_init(&syscall_sema, 1);
 	write_msr(MSR_SYSCALL_MASK,
 			  FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
 }
@@ -161,8 +162,8 @@ static int fd_read(int fd, void *buffer, size_t size)
 	if (fd < 0)
 		return -1;
 	/* write 가능한 버퍼인지 검사 */
-	if (!buffer_protection(buffer))
-		exit(-1);
+	// if (!buffer_protection(buffer))
+	// 	exit(-1);
 
 	// int64_t *pte = pml4e_walk(curr->pml4, buffer, 0);
 	// if (pte != NULL)
@@ -184,6 +185,21 @@ static int fd_read(int fd, void *buffer, size_t size)
 	if (curr->fdt[fd].file == NULL)
 		return -1;
 	lock_acquire(file_get_inode_lock(curr->fdt[fd].file));
+
+	void *upage = pg_round_down(buffer);
+	// for (off_t left = file_length(curr->fdt[fd].file); left > 0; left -= PGSIZE, upage += PGSIZE)
+	// {
+	// 	struct thread *curr = thread_current();
+	// 	struct supplemental_page_table *spt = &curr->spt;
+	// 	struct page *page = spt_find_page(spt, upage);
+	// 	if (page == NULL || page->frame == NULL)
+	// 		continue;
+
+	// 	uint64_t *pte = pml4e_walk(curr->pml4, upage, 0);
+	// 	// printf("라이터블하냐 :%d\n",is_writable(pte));
+	// 	if (page->writable == true && is_writable(pte)==0)
+	// 		vm_try_handle_fault(NULL,upage,0,0,0);
+	// }
 	read_size = file_read(curr->fdt[fd].file, buffer, size);
 	lock_release(file_get_inode_lock(curr->fdt[fd].file));
 	return read_size;
@@ -326,11 +342,11 @@ static void *mmap(void *addr, size_t length, int writable, int fd, off_t offset)
 	struct supplemental_page_table *spt = &curr->spt;
 	if (is_kernel_vaddr(addr) || (long)length <= (long)0)
 		return NULL;
-	
-	if (addr == NULL || offset !=pg_round_down(offset))
+
+	if (addr == NULL || offset != pg_round_down(offset))
 		return NULL;
 	uint64_t *upage = pg_round_down(addr);
-	
+
 	if (addr != upage || spt_find_page(spt, upage) != NULL || curr->fdt[fd].file == NULL || fd == 0 || fd == 1)
 		return NULL;
 

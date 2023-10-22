@@ -233,6 +233,30 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED,
 	page = spt_find_page(&curr->spt, upage);
 	// printf("찾았나%p\n", page);
 	// printf("rsp:%p, addr: %p\n",f->rsp,addr);
+
+	if (f == NULL)
+	{
+		// printf("%s %p 왔니, 타입: %d\n", curr->name, upage, page->operations->type);
+
+		// if (page->frame->link_cnt == 0)
+		// {
+		// 	pml4_set_page(curr->pml4, page->va, page->frame->kva, page->writable);
+		// }
+		// else
+		// {
+			struct frame *copy_frame;
+			copy_frame = vm_get_frame();
+			memcpy(copy_frame->kva, page->frame->kva, PGSIZE);
+			pml4_clear_page(curr->pml4, page->va);
+			page->frame->link_cnt--;
+			page->frame = copy_frame;
+			copy_frame->page = page;
+			pml4_set_page(curr->pml4, page->va, copy_frame->kva, page->writable);
+		// }
+
+		return true;
+	}
+
 	if (upage > USER_STACK - (1 << 20) && upage <= USER_STACK && f->rsp == addr)
 	{
 		// printf("스택 증가\n");
@@ -245,18 +269,25 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED,
 
 	if (page != NULL)
 	{
-		if (page->writable == true && write == true&& VM_TYPE(page->operations->type) != VM_UNINIT)
+		if (page->writable == true && write == true && page->frame != NULL && VM_TYPE(page->operations->type) != VM_UNINIT)
 		{
-			// printf("%s %p 왔니, 타임: %d\n",curr->name,upage,page->operations->type);
-			struct frame *copy_frame;
-			copy_frame = vm_get_frame();
-			memcpy(copy_frame->kva, page->frame->kva, PGSIZE);
-			pml4_clear_page(curr->pml4, page->va);
-			page->frame->link_cnt--;
+			// printf("%s %p 왔니, 타입: %d\n", curr->name, upage, page->operations->type);
+			// if (page->frame->link_cnt == 0)
+			// {
+			// 	pml4_set_page(curr->pml4, page->va, page->frame->kva, page->writable);
+			// }
+			// else
+			// {
+				struct frame *copy_frame;
+				copy_frame = vm_get_frame();
+				memcpy(copy_frame->kva, page->frame->kva, PGSIZE);
+				pml4_clear_page(curr->pml4, page->va);
+				page->frame->link_cnt--;
+				page->frame = copy_frame;
+				copy_frame->page = page;
+				pml4_set_page(curr->pml4, page->va, copy_frame->kva, page->writable);
+			// }
 
-			page->frame = copy_frame;
-			copy_frame->page = page;
-			pml4_set_page(curr->pml4, page->va, copy_frame->kva, page->writable);
 			return true;
 		}
 		if (page->writable == false && write == true)
@@ -367,13 +398,18 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED, st
 		/* lazy한 페이이지 인지 아닌지 구분 */
 		if (p->frame != NULL)
 		{
-			copy_frame = vm_get_frame();
-			if (copy_frame == NULL)
-				goto err;
-			memcpy(copy_frame->kva, p->frame->kva, PGSIZE);
+			// copy_frame = vm_get_frame();
+			// if (copy_frame == NULL)
+			// 	goto err;
+			// memcpy(copy_frame->kva, p->frame->kva, PGSIZE);
+
+
+			// 개선 예정
 			// copy_frame = calloc(1, sizeof(struct frame));
 			// copy_frame->kva = p->frame->kva;
-			// p->frame->link_cnt++;
+
+			copy_frame = p->frame;
+			p->frame->link_cnt++;
 			copy_page->frame = copy_frame;
 			copy_frame->page = copy_page;
 			if (page_get_type(p) == VM_FILE)
@@ -381,10 +417,10 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED, st
 				copy_page->file.file = file_duplicate(p->file.file);
 			}
 			/* cow를 위한 부모 페이지 readonly 변경 */
-			// pml4_set_page(src->spt_pml4, p->va, p->frame->kva, false);
+			pml4_set_page(src->spt_pml4, p->va, p->frame->kva, false);
 			/* cow를 위한 자식 페이지 readonly 변경 */
-			// pml4_set_page(curr->pml4, copy_page->va, p->frame->kva, false);
-			pml4_set_page(curr->pml4, copy_page->va, copy_frame->kva, p->writable);
+			pml4_set_page(curr->pml4, copy_page->va, p->frame->kva, false);
+			// pml4_set_page(curr->pml4, copy_page->va, copy_frame->kva, p->writable);
 			// printf("페이지 복사해서 넣는다. %p\n", new_page->va);
 		}
 		else

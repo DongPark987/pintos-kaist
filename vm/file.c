@@ -41,7 +41,7 @@ file_backed_swap_in(struct page *page, void *kva)
 {
 	struct thread *curr = thread_current();
 	struct supplemental_page_table *spt = &curr->spt;
-	// printf("스왑인 파일 페이지: %p\n",page->va);
+	printf("스왑인 파일 페이지: %p\n",page->va);
 	// struct file *file = lm->file;
 	struct file *file = page->file.file != NULL ? page->file.file : page->file.head_page->file.file;
 
@@ -71,7 +71,7 @@ file_backed_swap_in(struct page *page, void *kva)
 static bool
 file_backed_swap_out(struct page *page)
 {
-	// printf("아웃 %p\n", page->va);
+	printf("아웃 %p\n", page->va);
 	struct file_page *file_page UNUSED = &page->file;
 	struct thread *curr = thread_current();
 	struct supplemental_page_table *spt = &curr->spt;
@@ -144,7 +144,15 @@ file_backed_destroy(struct page *page)
 				file_write(file, curr_page->va, page_destroy_bytes);
 			}
 			pml4_clear_page(curr->pml4, upage);
-			palloc_free_page(curr_page->frame->kva);
+			if (curr_page->frame->link_cnt == 0)
+			{
+				palloc_free_page(curr_page->frame->kva);
+				free(curr_page->frame);
+			}
+			else
+			{
+				curr_page->frame->link_cnt--;
+			}
 		}
 		curr_page->va = 0;
 		destroy_bytes -= page_destroy_bytes;
@@ -243,7 +251,15 @@ void do_munmap(void *addr)
 				file_write(file, curr_page->va, page_destroy_bytes);
 			}
 			pml4_clear_page(curr->pml4, upage);
-			palloc_free_page(curr_page->frame->kva);
+			if (curr_page->frame->link_cnt == 0)
+			{
+				palloc_free_page(curr_page->frame->kva);
+				free(curr_page->frame);
+			}
+			else
+			{
+				curr_page->frame->link_cnt--;
+			}
 		}
 
 		/* Advance. */

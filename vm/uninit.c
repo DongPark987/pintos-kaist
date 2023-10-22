@@ -72,6 +72,7 @@ static void
 uninit_destroy(struct page *page)
 {
 	struct uninit_page *uninit UNUSED = &page->uninit;
+		// printf("언이닛 디스트로이 왔다.\n");
 
 	if (uninit->type == VM_FILE)
 	{

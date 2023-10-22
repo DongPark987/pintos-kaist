@@ -59,7 +59,7 @@ anon_swap_in(struct page *page, void *kva)
 static bool
 anon_swap_out(struct page *page)
 {
-	// printf("아웃\n");
+	printf("아논 아웃 %p\n",page->va);
 	struct anon_page *anon_page = &page->anon;
 	struct thread *curr = thread_current();
 	size_t free_sector = bitmap_scan_and_flip(used_sector, 0, 8, false);
@@ -83,6 +83,11 @@ anon_destroy(struct page *page)
 	if (page->frame != NULL)
 	{
 		pml4_clear_page(curr->pml4, page->va);
-		palloc_free_page(page->frame->kva);
+		if(page->frame->link_cnt==0){
+			palloc_free_page(page->frame->kva);
+			free(page->frame);
+		}else{
+			page->frame->link_cnt--;
+		}
 	}
 }

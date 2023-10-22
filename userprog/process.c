@@ -488,13 +488,13 @@ void process_exit(void)
 			for (struct list_elem *cur = list_begin(&curr->child_list); cur != list_end(&curr->child_list); cur = list_next(cur))
 			{
 				trash = list_entry(cur, struct child_info, child_elem);
-			printf("%s다잉 정리\n",curr->name);
+				// printf("%s다잉 정리\n", curr->name);
 
 				list_remove(cur);
 				trash->child_thread->parent = NULL;
 				free(trash);
 			}
-			printf("다잉 정리끝\n");
+			// printf("다잉 정리끝\n");
 		}
 
 		/* 부모 프로세스에 메시지 남김 */

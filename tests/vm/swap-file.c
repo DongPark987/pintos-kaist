@@ -39,6 +39,10 @@ test_main (void)
             fail ("byte %zu of mmap'd region has value %02hhx (should be 0)", i, actual[i]);
         }
     }
+    for (i = 0; i <len; i++) 
+    {
+        printf("",actual[i]);
+    }
 
     /* Unmap and close opend file */ 
     munmap (map);
