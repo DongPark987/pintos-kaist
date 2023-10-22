@@ -102,7 +102,6 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void *upage,
 		default:
 			break;
 		}
-		// uninit_new(t_page, rd_upage, init, type, aux, anon_initializer);
 		hash_insert(&spt->hash_pt, &t_page->hash_elem);
 		return true;
 	}
@@ -123,9 +122,6 @@ struct page *spt_find_page(struct supplemental_page_table *spt UNUSED,
 	uint8_t *rd_upage = pg_round_down(va);
 
 	page = page_lookup(rd_upage, spt);
-	// if(page!=NULL){
-	// 	printf("%p의 해시 찾음%p\n",va,page->va);
-	// }
 
 	return page;
 }
@@ -166,10 +162,10 @@ static struct frame *vm_evict_frame(void)
 {
 	struct frame *victim UNUSED = vm_get_victim();
 	/* TODO: swap out the victim and return the evicted frame. */
-	// printf("희생자 찾음:%p\n", victim->kva);
+
 	swap_out(victim->page);
 	memset(victim->kva, 0, PGSIZE);
-	// printf("희생자 :%p\n", victim->elem);
+
 	return victim;
 }
 
@@ -192,15 +188,12 @@ static struct frame *vm_get_frame(void)
 	{
 		free(frame);
 		frame = vm_evict_frame();
-		// printf("압수끝: %p\n",&frame->elem);
 		if (frame == NULL)
 		{
 			return NULL;
 		}
 	}
-	// printf("푸시백전\n");
 	list_push_back(&vm_frame_table, &frame->elem);
-	// printf("푸시백\n");
 	ASSERT(frame != NULL);
 	ASSERT(frame->page == NULL);
 	return frame;
@@ -215,6 +208,15 @@ static void vm_stack_growth(void *addr UNUSED)
 /* Handle the fault on write_protected page */
 static bool vm_handle_wp(struct page *page UNUSED)
 {
+	struct thread *curr = thread_current();
+	struct frame *copy_frame;
+	copy_frame = vm_get_frame();
+	memcpy(copy_frame->kva, page->frame->kva, PGSIZE);
+	pml4_clear_page(curr->pml4, page->va);
+	page->frame->link_cnt--;
+	page->frame = copy_frame;
+	copy_frame->page = page;
+	pml4_set_page(curr->pml4, page->va, copy_frame->kva, page->writable);
 }
 
 /* Return true on success */
@@ -228,38 +230,18 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED,
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
 	uint8_t *upage = pg_round_down(addr);
-	// printf("스택탑: %p\n", spt->stack_top);
-	// printf("폴트 발생 %p\n", addr);
 	page = spt_find_page(&curr->spt, upage);
-	// printf("찾았나%p\n", page);
-	// printf("rsp:%p, addr: %p\n",f->rsp,addr);
 
+	/* cow read 로 인한 페이지 폴트 발생 */
 	if (f == NULL)
 	{
-		// printf("%s %p 왔니, 타입: %d\n", curr->name, upage, page->operations->type);
-
-		// if (page->frame->link_cnt == 0)
-		// {
-		// 	pml4_set_page(curr->pml4, page->va, page->frame->kva, page->writable);
-		// }
-		// else
-		// {
-			struct frame *copy_frame;
-			copy_frame = vm_get_frame();
-			memcpy(copy_frame->kva, page->frame->kva, PGSIZE);
-			pml4_clear_page(curr->pml4, page->va);
-			page->frame->link_cnt--;
-			page->frame = copy_frame;
-			copy_frame->page = page;
-			pml4_set_page(curr->pml4, page->va, copy_frame->kva, page->writable);
-		// }
-
+		vm_handle_wp(page);
 		return true;
 	}
 
+	/* 스택 연장 */
 	if (upage > USER_STACK - (1 << 20) && upage <= USER_STACK && f->rsp == addr)
 	{
-		// printf("스택 증가\n");
 		vm_stack_growth(addr);
 		return true;
 	}
@@ -269,25 +251,10 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED,
 
 	if (page != NULL)
 	{
+		/* cow로 인한 페이지 폴트 발생 */
 		if (page->writable == true && write == true && page->frame != NULL && VM_TYPE(page->operations->type) != VM_UNINIT)
 		{
-			// printf("%s %p 왔니, 타입: %d\n", curr->name, upage, page->operations->type);
-			// if (page->frame->link_cnt == 0)
-			// {
-			// 	pml4_set_page(curr->pml4, page->va, page->frame->kva, page->writable);
-			// }
-			// else
-			// {
-				struct frame *copy_frame;
-				copy_frame = vm_get_frame();
-				memcpy(copy_frame->kva, page->frame->kva, PGSIZE);
-				pml4_clear_page(curr->pml4, page->va);
-				page->frame->link_cnt--;
-				page->frame = copy_frame;
-				copy_frame->page = page;
-				pml4_set_page(curr->pml4, page->va, copy_frame->kva, page->writable);
-			// }
-
+			vm_handle_wp(page);
 			return true;
 		}
 		if (page->writable == false && write == true)
@@ -298,16 +265,6 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED,
 		return false;
 	}
 
-	// // printf("aaa:%p\n", upage);
-	// uint64_t *pte = pml4e_walk(curr->pml4, addr, 0);
-	// // printf("%p,qaa\n",pte);
-	// // if(pte != NULL && !is_writable(pte))
-	// 	// printf("못쓴다.\n");
-	// if (pte != NULL && !is_writable(pte) && write)
-	// {
-	// 	return false;
-	// }
-	// printf("aaa\n");
 	return vm_do_claim_page(page);
 }
 
@@ -394,34 +351,29 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED, st
 		copy_page = malloc(sizeof(struct page));
 		if (copy_page == NULL)
 			goto err;
-		memcpy(copy_page, p, sizeof(struct page));
-		/* lazy한 페이이지 인지 아닌지 구분 */
-		if (p->frame != NULL)
-		{
-			// copy_frame = vm_get_frame();
-			// if (copy_frame == NULL)
-			// 	goto err;
-			// memcpy(copy_frame->kva, p->frame->kva, PGSIZE);
 
+		memcpy(copy_page, p, sizeof(struct page));
+		/* 프레임이 연결되어 있는 페이지 */
+		// if (p->frame != NULL)
+		if (VM_TYPE(p->operations->type) != VM_UNINIT)
+		{
 
 			// 개선 예정
 			// copy_frame = calloc(1, sizeof(struct frame));
 			// copy_frame->kva = p->frame->kva;
 
 			copy_frame = p->frame;
+			/* 프레임에 연결된 링크 증가 */
 			p->frame->link_cnt++;
 			copy_page->frame = copy_frame;
 			copy_frame->page = copy_page;
 			if (page_get_type(p) == VM_FILE)
-			{
 				copy_page->file.file = file_duplicate(p->file.file);
-			}
+
 			/* cow를 위한 부모 페이지 readonly 변경 */
 			pml4_set_page(src->spt_pml4, p->va, p->frame->kva, false);
 			/* cow를 위한 자식 페이지 readonly 변경 */
 			pml4_set_page(curr->pml4, copy_page->va, p->frame->kva, false);
-			// pml4_set_page(curr->pml4, copy_page->va, copy_frame->kva, p->writable);
-			// printf("페이지 복사해서 넣는다. %p\n", new_page->va);
 		}
 		else
 		{
@@ -429,13 +381,7 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED, st
 			size_t aux_size = 0;
 			switch (p->uninit.type)
 			{
-			case VM_UNINIT:
-				/* code */
-
-				break;
 			case VM_ANON:
-				/* code */
-				// aux_size = sizeof(struct lazy_file);
 				struct lazy_file *anon_lazy_file = malloc(sizeof(struct lazy_file));
 				if (anon_lazy_file == NULL)
 					goto err;
@@ -444,8 +390,6 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED, st
 
 				break;
 			case VM_FILE:
-				/* code */
-				// aux_size = sizeof(struct lazy_mmap);
 				struct lazy_mmap *original_mmap_lazy = p->uninit.aux;
 				struct lazy_mmap *mmap_lazy_file = malloc(sizeof(struct lazy_mmap));
 				if (mmap_lazy_file == NULL)
@@ -454,19 +398,11 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED, st
 				if (original_mmap_lazy->file != NULL)
 					mmap_lazy_file->file = file_duplicate(original_mmap_lazy->file);
 				copy_page->uninit.aux = mmap_lazy_file;
-
-				break;
-			case VM_PAGE_CACHE:
-				/* code */
 				break;
 
 			default:
 				break;
 			}
-			// lazy_file = malloc(aux_size);
-			// if (lazy_file == NULL)
-			// 	goto err;
-			// memcpy(lazy_file, p->uninit.aux, aux_size);
 		}
 		spt_insert_page(dst, copy_page);
 	}
@@ -480,9 +416,6 @@ void hash_free_page(struct hash_elem *h_page, void *aux UNUSED)
 {
 	struct page *page = hash_entry(h_page, struct page, hash_elem);
 	vm_dealloc_page(page);
-
-	// destroy(page);
-	// free(page);
 }
 
 /* Free the resource hold by the supplemental page table */
@@ -492,7 +425,6 @@ void supplemental_page_table_kill(struct supplemental_page_table *spt UNUSED)
 	 * TODO: writeback all the modified contents to the storage. */
 
 	hash_clear(&spt->hash_pt, hash_free_page);
-	// hash_destroy(&spt->hash_pt, hash_free_page);
 }
 
 struct page *

@@ -158,19 +158,14 @@ static bool buffer_protection(void *buffer)
 static int fd_read(int fd, void *buffer, size_t size)
 {
 	struct thread *curr = thread_current();
+	struct supplemental_page_table *spt = &curr->spt;
+
 	/* 유효하지 않은 fd */
 	if (fd < 0)
 		return -1;
 	/* write 가능한 버퍼인지 검사 */
 	// if (!buffer_protection(buffer))
 	// 	exit(-1);
-
-	// int64_t *pte = pml4e_walk(curr->pml4, buffer, 0);
-	// if (pte != NULL)
-	// {
-	// 	if (!is_writable(pte))
-	// 		exit(-1);
-	// }
 
 	/* 표준 입출력 fd 읽기 */
 	if (curr->fdt[fd].stdio != 0)
@@ -185,21 +180,18 @@ static int fd_read(int fd, void *buffer, size_t size)
 	if (curr->fdt[fd].file == NULL)
 		return -1;
 	lock_acquire(file_get_inode_lock(curr->fdt[fd].file));
-
+	
 	void *upage = pg_round_down(buffer);
-	// for (off_t left = file_length(curr->fdt[fd].file); left > 0; left -= PGSIZE, upage += PGSIZE)
-	// {
-	// 	struct thread *curr = thread_current();
-	// 	struct supplemental_page_table *spt = &curr->spt;
-	// 	struct page *page = spt_find_page(spt, upage);
-	// 	if (page == NULL || page->frame == NULL)
-	// 		continue;
-
-	// 	uint64_t *pte = pml4e_walk(curr->pml4, upage, 0);
-	// 	// printf("라이터블하냐 :%d\n",is_writable(pte));
-	// 	if (page->writable == true && is_writable(pte)==0)
-	// 		vm_try_handle_fault(NULL,upage,0,0,0);
-	// }
+	/* read 시스템콜 시 cow의 프레임 분할을 위한 페이지 폴트 발생 */
+	for (off_t left = file_length(curr->fdt[fd].file); left > 0; left -= PGSIZE, upage += PGSIZE)
+	{
+		struct page *page = spt_find_page(spt, upage);
+		if (page == NULL || page->frame == NULL)
+			continue;
+		uint64_t *pte = pml4e_walk(curr->pml4, upage, 0);
+		if (page->writable == true && is_writable(pte) == 0)
+			vm_try_handle_fault(NULL, upage, 0, 0, 0);
+	}
 	read_size = file_read(curr->fdt[fd].file, buffer, size);
 	lock_release(file_get_inode_lock(curr->fdt[fd].file));
 	return read_size;

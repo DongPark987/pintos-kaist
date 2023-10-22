@@ -73,7 +73,6 @@ tid_t process_create_initd(const char *file_name)
 
 	/* Create a new thread to execute FILE_NAME. */
 	sema_init(&exec_sema, 1);
-	// printf("초기화 끝\n");
 
 	tid = thread_create(strtok_r(file_name, " ", save_ptr), PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
@@ -109,23 +108,15 @@ tid_t process_fork(const char *name, struct intr_frame *if_ UNUSED)
 	curr->fork_tf = palloc_get_page(PAL_ZERO);
 	memcpy(curr->fork_tf, if_, sizeof(struct intr_frame));
 
-	// if (curr->fork_depth > 179)
-	// 	return -1;
 	int tid = thread_create(name, PRI_DEFAULT, __do_fork, curr);
 
-	// 	return -1;
-
 	if (tid == TID_ERROR)
-	{
-		// printf("크리에이트 실패\n");
 		return TID_ERROR;
-	}
+
 	sema_down(&curr->fork_sema);
 
 	struct child_info *c_info = get_child_info(curr, tid);
-	// printf("자식 ret :%d\n", c_info->ret);
 	if (c_info == NULL || c_info->ret == -9999)
-		// printf("처리해\n");
 		return -1;
 
 	return tid;
@@ -215,7 +206,6 @@ __do_fork(void *aux)
 	/* TODO: 부모의 인터럽트 플래그를 어떻게든 전달하세요. (예: process_fork()의 if_) */
 	struct intr_frame *parent_if = parent->fork_tf;
 	bool succ = true;
-	// printf("자식 실행중: %s tid: %d\n",current->name,current->tid);
 
 	/* 1. Read the cpu context to local stack. */
 	memcpy(&if_, parent_if, sizeof(struct intr_frame));
@@ -258,11 +248,11 @@ __do_fork(void *aux)
 	process_init();
 	if (current->fdt == NULL)
 	{
-		// printf("으악1\n");
 		goto error;
 	}
 	/* Finally, switch to the newly created process. */
 
+	// dup2 용 fdt 복제 코드
 	// current->fdt[0].stdio = 0;
 	// current->fdt[1].stdio = 0;
 
@@ -318,35 +308,7 @@ __do_fork(void *aux)
 		}
 	}
 
-	// for (int i = MIN_FD; i < MAX_FD; i++)
-	// {
-	// 	if (parent->fdt[i].file != NULL)
-	// 	{
-	// 		if (parent->fdt[i].dup2_num == 0 && tmp_fdt[i] == NULL)
-	// 			tmp_fdt[i] = file_duplicate(parent->fdt[i].file);
-	// 		else
-	// 		{
-	// 			if (tmp_fdt[parent->fdt[i].dup2_num] == NULL)
-	// 				tmp_fdt[parent->fdt[i].dup2_num] = file_duplicate(parent->fdt[i].file);
-	// 		}
-	// 	}
-	// }
-
-	// for (int i = MIN_FD; i < MAX_FD; i++)
-	// {
-
-	// 	if (parent->fdt[i].dup2_num == 0 && parent->fdt[i].file != NULL)
-	// 		current->fdt[i].file = tmp_fdt[i];
-	// 	else
-	// 	{
-	// 		current->fdt[i].file = tmp_fdt[parent->fdt[i].dup2_num];
-	// 		current->fdt[i].dup2_num = parent->fdt[i].dup2_num;
-	// 	}
-	// }
-
 	if_.R.rax = 0;
-	// printf("자식 실행중 다시체크: %s tid: %d\n",current->name,current->tid);
-	// printf("자식 RIP!!!!!!!!!!!!!!!!!!%p\n",if_.rip);
 
 	if (succ)
 	{
@@ -464,6 +426,24 @@ int process_wait(tid_t child_tid UNUSED)
 	}
 }
 
+void fdt_clean_up(){
+	struct thread *curr = thread_current();
+	if (curr->fdt != NULL)
+	{
+		for (int i = 0; i < MAX_FD; i++)
+		{
+			if (curr->fdt[i].file != NULL)
+			{
+				int open_cnt = file_dec_open_cnt(curr->fdt[i].file);
+				if (open_cnt == 0)
+					file_close(curr->fdt[i].file);
+			}
+		}
+		palloc_free_multiple(curr->fdt, 3);
+	}
+
+}
+
 void process_exit(void)
 {
 	struct thread *curr = thread_current();
@@ -478,7 +458,6 @@ void process_exit(void)
 
 	if (!curr->is_kernel)
 	{
-
 		printf("%s: exit(%d)\n", curr->name, curr->exit_code);
 
 		/* 자식 프로세서 다잉 메시지 정리 */
@@ -488,41 +467,27 @@ void process_exit(void)
 			for (struct list_elem *cur = list_begin(&curr->child_list); cur != list_end(&curr->child_list); cur = list_next(cur))
 			{
 				trash = list_entry(cur, struct child_info, child_elem);
-				// printf("%s다잉 정리\n", curr->name);
-
 				list_remove(cur);
 				trash->child_thread->parent = NULL;
 				free(trash);
 			}
-			// printf("다잉 정리끝\n");
-		}
-
-		/* 부모 프로세스에 메시지 남김 */
-		if (curr->parent != NULL)
-		{
-			curr->child_info->ret = curr->exit_code;
-			curr->child_info->status = CHILD_EXIT;
-			if (curr->exe_file != NULL)
-				file_close(curr->exe_file);
-			sema_up(&curr->parent->wait_sema);
 		}
 	}
 
 	/* 파일 디스크립터 테이블 정리 */
-	if (curr->fdt != NULL)
-	{
-		for (int i = 0; i < MAX_FD; i++)
-		{
-			if (curr->fdt[i].file != NULL)
-			{
-				int open_cnt = file_dec_open_cnt(curr->fdt[i].file);
-				if (open_cnt == 0)
-					file_close(curr->fdt[i].file);
-			}
-		}
-		palloc_free_multiple(curr->fdt, 3);
-	}
+	fdt_clean_up();
+
 	process_cleanup();
+
+	/* 부모 프로세스에 메시지 남김 */
+	if (curr->parent != NULL)
+	{
+		curr->child_info->ret = curr->exit_code;
+		curr->child_info->status = CHILD_EXIT;
+		if (curr->exe_file != NULL)
+			file_close(curr->exe_file);
+		sema_up(&curr->parent->wait_sema);
+	}
 }
 
 /* Free the current process's resources. */
@@ -1045,7 +1010,6 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
 		struct lazy_file *aux = malloc(sizeof(struct lazy_file));
 		aux->ofs = ofs_curr;
 		ofs_curr += page_read_bytes;
-		// printf("읽을 위치 %d\n",file_tell(file));
 
 		aux->page_read_bytes = page_read_bytes;
 		aux->page_zero_bytes = page_zero_bytes;
@@ -1055,34 +1019,6 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
 											writable, lazy_load_segment, aux))
 			return false;
 
-		// uint8_t *kpage = palloc_get_page(PAL_USER);
-		// if (kpage == NULL)
-		// 	return false;
-
-		// /* Load this page. */
-		// if (file_read(file, kpage, page_read_bytes) != (int)page_read_bytes)
-		// {
-		// 	palloc_free_page(kpage);
-		// 	return false;
-		// }
-		// memset(kpage + page_read_bytes, 0, page_zero_bytes);
-
-		// struct thread *t = thread_current();
-
-		// uint8_t *rd_upage = pg_round_down(upage);
-		// // printf("페이지\n");
-
-		// if (spt_find_page(&t->spt, rd_upage))
-		// {
-		// 	pml4_set_page(t->pml4, rd_upage, kpage, writable);
-		// }
-		// else
-		// {
-		// 	return false;
-		// }
-
-		/* Advance. */
-		// printf("aa\n");
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
 		upage += PGSIZE;
@@ -1101,35 +1037,9 @@ setup_stack(struct intr_frame *if_)
 	 * TODO: If success, set the rsp accordingly.
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
-	// struct thread *curr = thread_current();
-	// struct supplemental_page_table *spt = &curr->spt;
-
-	// uint8_t *newpage;
-	// newpage = palloc_get_page(PAL_USER | PAL_ZERO);
-	// if (newpage == NULL)
-	// 	return false;
 
 	uint8_t *rd_upage = pg_round_down(stack_bottom);
-	// vm_alloc_page(VM_ANON, rd_upage, true);
-	// printf("시작 스택 %p\n",rd_upage);
 	success = vm_claim_page(rd_upage);
-	// 	struct page *new_page = malloc(sizeof(struct page));
-	// 	struct frame *new_frame = malloc(sizeof(struct frame));
-	// 	new_page->writable = true;
-	// 	// uninit_new(new_page, rd_upage, NULL, VM_ANON, NULL, anon_initializer);
-	// 	spt_insert_page(spt, new_page);
-	// 	new_frame->kva = newpage;
-	// 	new_frame->page = new_page;
-	// 	new_page->frame = new_frame;
-	// 	new_page->va = rd_upage;
-	// 	if (pml4_set_page(curr->pml4, rd_upage, newpage, true) == NULL)
-	// 	{
-	// 		palloc_free_page(newpage);
-	// 		return false;
-	// 	}
-
-	// 	// printf("%d에 저장 %p, %p \n\n", spt->pg_cnt, stack_bottom, spt->pg[spt->pg_cnt].va);
-	// }
 
 	if_->rsp = (uint8_t *)USER_STACK;
 	return true;
