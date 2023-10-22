@@ -6,12 +6,16 @@
 #include "threads/malloc.h"
 #include "vm/inspect.h"
 #include <string.h>
+
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
+
+struct list vm_frame_table;
 
 void vm_init(void) {
   vm_anon_init();
   vm_file_init();
+  list_init(&vm_frame_table);
 #ifdef EFILESYS /* For project 4 */
   pagecache_init();
 #endif
@@ -88,8 +92,11 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void *upage,
     // }
     hash_insert(&spt->hash_pt, &newpage->hash_elem);
     return true;
-  }
-  // return true;
+  } else
+    goto err;
+
+  return true;
+// return true;
 err:
   return false;
 }
@@ -137,6 +144,9 @@ void spt_remove_page(struct supplemental_page_table *spt, struct page *page) {
  * 페이지 대체 대상이 될 구조체 프레임을 반환합니다. */
 static struct frame *vm_get_victim(void) {
   struct frame *victim = NULL;
+  if (!list_empty(&vm_frame_table)) {
+    victim = list_entry(list_pop_front(&vm_frame_table), struct frame, elem);
+  }
   /* TODO: The policy for eviction is up to you. */
 
   return victim;
@@ -148,9 +158,12 @@ static struct frame *vm_get_victim(void) {
  * 에러 발생 시 NULL을 반환합니다. */
 static struct frame *vm_evict_frame(void) {
   struct frame *victim UNUSED = vm_get_victim();
+
   /* TODO: swap out the victim and return the evicted frame. */
-  // swap_out(victim->page);
-  return NULL;
+  swap_out(victim->page);
+  memset(victim->kva, 0, PGSIZE);
+  // return NULL;
+  return victim;
 }
 
 /* palloc() and get frame. If there is no available page, evict the page
@@ -163,24 +176,27 @@ static struct frame *vm_evict_frame(void) {
  * 대체합니다. */
 static struct frame *vm_get_frame(void) {
   struct frame *frame = (struct frame *)malloc(sizeof(struct frame));
-  frame->kva = palloc_get_page(PAL_USER | PAL_ZERO);
-  if (frame == NULL || frame->kva == NULL) {
-    free(frame);
-    PANIC("todo");
-    // return false;
-  }
-  // list_push_back(&frame_list, &frame.frame_elem);
-  // 할당된 프레임을 초기화
-  frame->page = NULL; // 페이지 연결 초기화
-  // frame->kva = NULL;  // 가상 주소 초기화
+  if (frame == NULL)
+    return NULL;
+  uint8_t *kpage = palloc_get_page(PAL_USER | PAL_ZERO);
 
-  /* TODO: Fill this function. */
-  // 수도코드:
-  // 1. 프레임 할당을 시도 (palloc)
-  // 2. 할당된 프레임이 있을 경우 할당된 프레임을 반환
-  // 3. 할당된 프레임이 없을 경우 페이지 대체 알고리즘을 사용해 프레임 대체
-  // (evict)
-  // 4. 대체된 프레임을 반환
+  // if (frame == NULL || frame->kva == NULL) {
+  //   free(frame);
+  //   PANIC("todo");
+  //   // return false;
+  // }
+
+  frame->kva = kpage;
+  frame->page = NULL;
+
+  if (frame->kva == NULL) {
+    free(frame);
+    frame = vm_evict_frame();
+
+    if (frame == NULL)
+      return NULL;
+  }
+  list_push_back(&vm_frame_table, &frame->elem);
 
   ASSERT(frame != NULL); // 프레임이 할당되지 않은 경우 예외 처리
   ASSERT(frame->page == NULL); // 프레임에 이미 페이지가 연결된 경우 예외 처리
@@ -311,7 +327,8 @@ void vm_dealloc_page(struct page *page) {
  * 물리 메모리 프레임에 매핑하는 역할을 합니다. */
 // bool vm_claim_page(void *va UNUSED) {
 //   /* TODO: Fill this function */
-//   /* TODO: 여기서는 주어진 가상 주소(va)에 해당하는 페이지를 어떻게 찾을 것인지
+//   /* TODO: 여기서는 주어진 가상 주소(va)에 해당하는 페이지를 어떻게 찾을
+//   것인지
 //    * 구현해야 합니다. */
 //   struct thread *curr = thread_current();
 //   struct page *page = spt_find_page(&curr->spt, va);
@@ -429,7 +446,8 @@ void supplemental_page_table_init(struct supplemental_page_table *spt UNUSED) {
 // }
 
 // bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED,
-//                                   struct supplemental_page_table *src UNUSED) {
+//                                   struct supplemental_page_table *src UNUSED)
+//                                   {
 //   // TODO: 보조 페이지 테이블을 src에서 dst로 복사합니다.
 //   // TODO: src의 각 페이지를 순회하고 dst에 해당 entry의 사본을 만듭니다.
 //   // TODO: uninit page를 할당하고 그것을 즉시 claim해야 합니다.
@@ -502,7 +520,8 @@ void supplemental_page_table_init(struct supplemental_page_table *spt UNUSED) {
 //       struct page *file_page = spt_find_page(dst, upage);
 //       file_backed_initializer(file_page, type, NULL);
 //       file_page->frame = src_page->frame;
-//       pml4_set_page(thread_current()->pml4, file_page->va, src_page->frame->kva,
+//       pml4_set_page(thread_current()->pml4, file_page->va,
+//       src_page->frame->kva,
 //                     src_page->writable);
 //       continue;
 //     }

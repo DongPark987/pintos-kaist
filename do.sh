@@ -190,6 +190,7 @@ PRIORITY_DONATE_CHAIN="pintos -v -k -T 60 -m 20   --fs-disk=10  --swap-disk=4 --
 COW_SIMPLE="pintos -v -k -T 60 -m 20   --fs-disk=10 -p tests/vm/cow/cow-simple:cow-simple --swap-disk=4 -- -q   -f run cow-simple"
 
 
+SWAP_FILE1="pintos --gdb -v -k -m 8   --fs-disk=10 -p tests/vm/swap-file:swap-file -p ../../tests/vm/large.txt:large.txt --swap-disk=10 -- -q   -f run swap-file"
 MMAP_INHERIT1="pintos --gdb --fs-disk=10 -p tests/vm/mmap-inherit:mmap-inherit -p ../../tests/vm/sample.txt:sample.txt -p tests/vm/child-inherit:child-inherit --swap-disk=4 -- -q   -f run mmap-inherit"
 # cd threads
 cd vm
@@ -197,6 +198,6 @@ make clean
 make
 cd build
 source ../../activate
-$MMAP_CLEAN
+$SWAP_FILE1
 
 
