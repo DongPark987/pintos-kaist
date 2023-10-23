@@ -198,6 +198,6 @@ make clean
 make
 cd build
 source ../../activate
-$SWAP_FILE1
+$CLOSE_TWICE
 
 

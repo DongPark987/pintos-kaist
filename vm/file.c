@@ -5,6 +5,7 @@
 static bool file_backed_swap_in(struct page* page, void* kva);
 static bool file_backed_swap_out(struct page* page);
 static void file_backed_destroy(struct page* page);
+static void do_file_backed_destroy(struct page* page, bool spt_hash_delete);
 
 /* DO NOT MODIFY this struct */
 static const struct page_operations file_ops = {
@@ -43,9 +44,15 @@ static bool file_backed_swap_in(struct page* page, void* kva)
     struct thread* curr = thread_current();
     struct file* file = page->file.file != NULL ? page->file.file : page->file.head_page->file.file;
 
+    off_t offset = page->file.offset;
+    bool writable = page->writable;
     // 4. 파일 오프셋이 파일 길이보다 작거나 같은 경우 페이지 스왑 인 가능
     if (page->file.offset <= file_length(file)) {
-        file_read_at(file, kva, page->file.page_length, page->file.offset);
+        size_t page_read_bytes = page->file.page_length;
+        uint8_t* kpage = page->frame->kva;
+        if (kpage == NULL)
+            return false;
+        file_read_at(file, kpage, page_read_bytes, offset);
     }
     return true;
 }
@@ -57,7 +64,7 @@ static bool file_backed_swap_out(struct page* page)
     struct thread* curr = thread_current();
     // 스왑아웃될 페이지의 파일을 결정하는 데 사용하는 구문
     struct file* file = page->file.file != NULL ? page->file.file : page->file.head_page->file.file;
-    
+
     // 페이지가 변경되었으면 파일로 쓰기 작업 수행
     if (pml4_is_dirty(curr->pml4, page->va)) {
         file_write_at(file, page->frame->kva, page->file.page_length, page->file.offset);
@@ -71,66 +78,9 @@ static bool file_backed_swap_out(struct page* page)
     return true;
 }
 
-/* Destory the file backed page. PAGE will be freed by the caller. */
-/* 파일로 지원되는 페이지를 파괴합니다. 페이지 자체는 호출자에 의해 해제될
- * 것입니다. */
-// static void file_backed_destroy(struct page *page) {
-//   // 페이지의 파일 페이지 구조체를 가져옵니다.
-//   // struct file_page *file_page UNUSED = &page->file;
-//   // // 페이지와 관련된 프레임이 존재하는 경우, 해당 프레임의 페이지 포인터를
-//   // // NULL로 설정합니다.
-//   // if (page->frame)
-//   //   page->frame->page = NULL;
-//   // free(page->frame);
-//   struct file_page *file_page UNUSED = &page->file;
-//   if (pml4_is_dirty(thread_current()->pml4, page->va)) {
-//     file_write_at(file_page->file, page->va, file_page->total_length,
-//                   file_page->offset);
-//     pml4_set_dirty(thread_current()->pml4, page->va, 0);
-//   }
-//   pml4_clear_page(thread_current()->pml4, page->va);
-// }
-
 static void file_backed_destroy(struct page* page)
 {
-    // do_munmap(page->file.addr);
-    if (page->va == 0)
-        return;
-    struct thread* curr = thread_current();
-    struct supplemental_page_table* spt = &curr->spt;
-    struct page* head_page;
-    if (page->file.head_page == NULL) {
-        head_page = page;
-    } else
-        head_page = page->file.head_page;
-    struct file* file = head_page->file.file;
-
-    void* upage = head_page->file.addr;
-    // printf("문 페이지:%p", page);
-    if (page == NULL)
-        goto err;
-    struct file_page* file_page = &page->file;
-
-    size_t destroy_bytes = file_page->total_length;
-    // printf("파일백 크기: %d\n", destroy_bytes);
-    while (destroy_bytes > 0) {
-        size_t page_destroy_bytes = destroy_bytes < PGSIZE ? destroy_bytes : PGSIZE;
-        struct page* curr_page = spt_find_page(spt, upage);
-        if (curr_page == NULL)
-            curr_page = page;
-        if (pml4_is_dirty(curr->pml4, upage)) {
-            file_seek(file, curr_page->file.offset);
-            file_write(file, page->va, page_destroy_bytes);
-        }
-        pml4_clear_page(curr->pml4, upage);
-        palloc_free_page(curr_page->frame->kva);
-        curr_page->va = 0;
-        destroy_bytes -= page_destroy_bytes;
-        upage += PGSIZE;
-    }
-    file_close(file);
-err:
-    return;
+    do_file_backed_destroy(page, false);
 }
 
 /* Do the mmap */
@@ -196,54 +146,9 @@ void do_munmap(void* addr)
 {
     struct thread* curr = thread_current();
     struct supplemental_page_table* spt = &curr->spt;
-
     // 주어진 가상 주소에 해당하는 페이지를 보조 페이지 테이블에서 찾습니다.
     struct page* page = spt_find_page(spt, addr);
-
-    // 페이지의 시작 가상 주소를 `upage`로 설정합니다.
-    void* upage = page->file.addr;
-    // 파일 핸들을 결정합니다. 만약 `head_page`가 없으면 `file`을 사용하고,
-    // 그렇지 않으면 `head_page`의 `file`을 사용합니다.
-    struct file* file = page->file.head_page == NULL ? page->file.file : spt_find_page(spt, upage)->file.file;
-    // 페이지와 관련된 `file_page` 구조체에 대한 포인터를 가져옵니다.
-    struct file_page* file_page = &page->file;
-
-    // 페이지를 해제할 바이트 수를 설정합니다.
-    size_t destroy_bytes = file_page->total_length;
-
-    while (destroy_bytes > 0) {
-        // 페이지를 해제할 바이트 수를 페이지 크기 이하로 설정합니다.
-        size_t page_destroy_bytes = destroy_bytes < PGSIZE ? destroy_bytes : PGSIZE;
-        // 현재 페이지를 보조 페이지 테이블에서 가상 주소 `upage`로 찾습니다.
-        struct page* curr_page = spt_find_page(spt, upage);
-
-        // 현재 페이지에 프레임이 할당되지 않았고, VM의 유형이 `VM_UNINIT`이 아닌 경우, 파일 정보를 설정하고 페이지를 할당합니다.
-        if (curr_page->frame == NULL && VM_TYPE(curr_page->operations->type) != VM_UNINIT) {
-            curr_page->file.file = file_reopen(file);
-            // 페이지를 할당합니다. (`VM_ANON`은 물리 메모리에 할당된 페이지를 가리키는 상수입니다.)
-            vm_alloc_page(VM_ANON, pg_round_down(curr_page->va), true);
-            // 페이지를 클레임합니다.
-            vm_claim_page(curr_page->va);
-        }
-
-        // 페이지가 더티한 경우 파일에 쓰고 파일 위치를 업데이트합니다.
-        if (pml4_is_dirty(curr->pml4, upage)) {
-            // 파일 위치를 설정합니다.
-            file_seek(file, curr_page->file.offset);
-            // 페이지를 파일에 쓰고 파일 위치를 업데이트합니다.
-            file_write(file, curr_page->va, page_destroy_bytes);
-        }
-        // 페이지를 페이지 테이블에서 제거하고 프레임을 해제하며 페이지 엔트리를 해시에서 제거합니다.
-        pml4_clear_page(curr->pml4, upage);
-        palloc_free_page(curr_page->frame->kva);
-        hash_delete(&curr->spt.hash_pt, &curr_page->hash_elem);
-        free(curr_page);
-
-        // 남은 바이트 수를 업데이트하고 `upage`를 다음 페이지로 이동합니다.
-        destroy_bytes -= page_destroy_bytes;
-        upage += PGSIZE;
-    }
-    file_close(file);
+    do_file_backed_destroy(page, true);
 }
 
 /* do_lazy_mmap 함수는 파일 데이터를 가상 메모리 페이지로 로드하는 역할을
@@ -278,4 +183,52 @@ bool* do_lazy_mmap(struct page* page, void* aux)
     // 사용한 aux 메모리를 해제
     free(aux);
     return true;
+}
+
+static void do_file_backed_destroy(struct page* page, bool spt_hash_delete)
+{
+    struct thread* curr = thread_current();
+    struct supplemental_page_table* spt = &curr->spt;
+    void* upage = page->file.addr;
+    struct file* file = page->file.file != NULL ? page->file.file : page->file.head_page->file.file;
+
+    /* va가 0인경우 이미 자원정리가 완료된 페이지로 판별 */
+    if (page->va == 0)
+        return;
+    struct file_page* file_page = &page->file;
+
+    ASSERT(pg_ofs(upage) == 0);
+    size_t destroy_bytes = file_page->total_length;
+    while (destroy_bytes > 0) {
+        size_t page_destroy_bytes = destroy_bytes < PGSIZE ? destroy_bytes : PGSIZE;
+        struct page* curr_page = spt_find_page(spt, upage);
+        if (curr_page == NULL)
+            curr_page = page;
+
+        if (curr_page->frame != NULL) {
+            if (pml4_is_dirty(curr->pml4, upage))
+                file_write_at(file, curr_page->va, page_destroy_bytes, curr_page->file.offset);
+
+            pml4_clear_page(curr->pml4, upage);
+
+            palloc_free_page(curr_page->frame->kva);
+            free(curr_page->frame);
+        }
+
+        /* Advance. */
+        /* munmap인 경우에만 해시 테이블 제거 */
+        if (spt_hash_delete) {
+            hash_delete(&curr->spt.hash_pt, &curr_page->hash_elem);
+            free(curr_page);
+        }
+        /* spt_kill을 통해 순회 제거중인 경우 임의로 페이지를 제거하지 않고 va값만 0으로 변경 */
+        else
+            curr_page->va = 0;
+
+        destroy_bytes -= page_destroy_bytes;
+        upage += PGSIZE;
+    }
+    file_close(file);
+err:
+    return;
 }

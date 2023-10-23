@@ -656,33 +656,9 @@ bool page_less(const struct hash_elem *a_, const struct hash_elem *b_,
 void clear_func(struct hash_elem *elem, void *aux) {
   // 해시 테이블의 각 항목을 순회하면서 페이지 구조체로 형변환
   struct page *page = hash_entry(elem, struct page, hash_elem);
-  // size_t page_read_bytes =
-  //     page->file.total_length < PGSIZE ? page->file.total_length : PGSIZE;
-
-  // // 파일 페이지인 경우 처리
-  // if (page->operations->type == VM_FILE) {
-  //   // 파일 페이지가 메모리에 로드되어 있고 수정되었는지 확인
-  //   if (page->frame != NULL &&
-  //       pml4_is_dirty(thread_current()->pml4, page->va)) {
-  //     // 파일의 오프셋을 페이지의 오프셋으로 이동
-  //     if (page->file.file != NULL && page->file.head_page->file.file != NULL)
-  //       file_seek(page->file.file, page->file.offset);
-  //     // 페이지의 내용을 해당 파일에 기록 (page->va부터
-  //     // page->file.page_length만큼)
-  //     if (page->writable)
-  //       file_write(page->file.file, page->va, page_read_bytes);
-  //   }
-  //   // 파일 페이지를 닫음
-  //   file_close(page->file.file);
-  // }
-  // 페이지 자원을 해제 (가상 주소 페이지, 페이지 프레임, 페이지 구조체)
-  // vm_dealloc_page(page);
-  // struct page *page = hash_entry(elem, struct page, hash_elem);
-  // destroy(page);
-  // free(page);
-
   vm_dealloc_page(page);
 }
+
 void va_exeception_free(void *f) {
   if (f != NULL)
     free(f);
