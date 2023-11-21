@@ -147,4 +147,4 @@ make
 cd build
 source ../../activate
 
-$PAGE_MERGE_SEQ
+$WAIT_KILLED

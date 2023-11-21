@@ -11,6 +11,7 @@
 
 /* The disk that contains the file system. */
 struct disk *filesys_disk;
+struct semaphore filesys_sema;
 
 static void do_format(void);
 
@@ -19,6 +20,7 @@ static void do_format(void);
 void filesys_init(bool format)
 {
 	filesys_disk = disk_get(0, 1);
+	sema_init(&filesys_sema, 1);
 	if (filesys_disk == NULL)
 		PANIC("hd0:1 (hdb) not present, file system initialization failed");
 
@@ -110,6 +112,23 @@ bool filesys_remove(const char *name)
 	dir_close(dir);
 
 	return success;
+}
+
+off_t filesys_read(struct file *file, void *buffer, off_t size)
+{
+
+	sema_down(&filesys_sema);
+	off_t read_size = file_read(file, buffer, size);
+	sema_up(&filesys_sema);
+	return read_size;
+}
+
+off_t filesys_write(struct file *file, void *buffer, off_t size)
+{
+	sema_down(&filesys_sema);
+	off_t write_size = file_write(file, buffer, size);
+	sema_up(&filesys_sema);
+	return write_size;
 }
 
 /* Formats the file system. */

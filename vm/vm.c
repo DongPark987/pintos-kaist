@@ -8,6 +8,7 @@
 #include "hash.h"
 
 struct list vm_frame_table;
+struct semaphore handle_fault_sema;
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -16,6 +17,7 @@ void vm_init(void)
 	vm_anon_init();
 	vm_file_init();
 	list_init(&vm_frame_table);
+	sema_init(&handle_fault_sema, 2);
 #ifdef EFILESYS /* For project 4 */
 	pagecache_init();
 #endif
@@ -162,8 +164,17 @@ static struct frame *vm_evict_frame(void)
 {
 	struct frame *victim UNUSED = vm_get_victim();
 	/* TODO: swap out the victim and return the evicted frame. */
+	struct page *victim_page = list_entry(list_front(&victim->page_list), struct page, frame_page_list_elem);
+	// struct page *victim_page = victim->page;
+	swap_out(victim_page);
+	struct frame *temp_victim = victim;
 
-	swap_out(victim->page);
+	victim = calloc(1, sizeof(struct frame));
+
+	victim->kva = temp_victim->kva;
+
+	temp_victim->kva = NULL;
+
 	memset(victim->kva, 0, PGSIZE);
 
 	return victim;
@@ -177,23 +188,26 @@ static struct frame *vm_get_frame(void)
 {
 	struct frame *frame = NULL;
 	/* TODO: Fill this function. */
-	frame = malloc(sizeof(struct frame));
+	frame = calloc(1, sizeof(struct frame));
 	if (frame == NULL)
 		return NULL;
 	uint8_t *kpage = palloc_get_page(PAL_USER | PAL_ZERO);
 	frame->kva = kpage;
 	frame->page = NULL;
 	frame->link_cnt = 0;
+	// printf("프레임 요청\n");
 	if (frame->kva == NULL)
 	{
 		free(frame);
+		// printf("에빅트\n");
 		frame = vm_evict_frame();
 		if (frame == NULL)
 		{
 			return NULL;
 		}
 	}
-	list_push_back(&vm_frame_table, &frame->elem);
+	list_init(&frame->page_list);
+	// printf("프레임 받음\n");
 	ASSERT(frame != NULL);
 	ASSERT(frame->page == NULL);
 	return frame;
@@ -205,18 +219,46 @@ static void vm_stack_growth(void *addr UNUSED)
 	vm_claim_page(addr);
 }
 
+
+
+
 /* Handle the fault on write_protected page */
+/* write 페이지 폴트가 발생한 경우 COW로 인한 폴트를 처리하는 함수 */
 static bool vm_handle_wp(struct page *page UNUSED)
 {
+	// sema_down(&handle_fault_sema);
 	struct thread *curr = thread_current();
 	struct frame *copy_frame;
+
+	/* 페이지가 스왑 아웃 상태인 경우 스왑인을 하고 처리 */
+	if (page->frame->kva == NULL)
+	{
+		vm_do_claim_page(page);
+	}
+	if (page->frame->link_cnt == 0)
+	{
+
+		list_push_back(&vm_frame_table, &page->frame->elem);
+		pml4_set_page(curr->pml4, page->va, page->frame->kva, page->writable);
+		return true;
+	}
+
+	/* 페이지 폴트를 발생시킨 프로세스의 페이지에 새로 할당할 프레임 생성 */
 	copy_frame = vm_get_frame();
+	/* 공유하던 프레임으로부터 새로 할당한 프레임에 데이터 복사 */
 	memcpy(copy_frame->kva, page->frame->kva, PGSIZE);
 	pml4_clear_page(curr->pml4, page->va);
+	list_remove(&page->frame_page_list_elem);
+	copy_frame->start_sector = page->frame->start_sector;
 	page->frame->link_cnt--;
 	page->frame = copy_frame;
 	copy_frame->page = page;
+	list_push_back(&page->frame->page_list, &page->frame_page_list_elem);
+	list_push_back(&vm_frame_table, &page->frame->elem);
+	/* 새로 할당된 프레임의 kva와 va 연결 */
 	pml4_set_page(curr->pml4, page->va, copy_frame->kva, page->writable);
+
+	return true;
 }
 
 /* Return true on success */
@@ -224,6 +266,7 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED,
 						 bool user UNUSED, bool write UNUSED,
 						 bool not_present UNUSED)
 {
+	// sema_down(&handle_fault_sema);
 	struct supplemental_page_table *spt UNUSED = &thread_current()->spt;
 	struct thread *curr = thread_current();
 	struct page *page = NULL;
@@ -252,7 +295,8 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED,
 	if (page != NULL)
 	{
 		/* cow로 인한 페이지 폴트 발생 */
-		if (page->writable == true && write == true && page->frame != NULL && VM_TYPE(page->operations->type) != VM_UNINIT)
+		if (page->writable == true && write == true && page->frame != NULL
+		 && VM_TYPE(page->operations->type) != VM_UNINIT)
 		{
 			vm_handle_wp(page);
 			return true;
@@ -265,7 +309,9 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED,
 		return false;
 	}
 
-	return vm_do_claim_page(page);
+	bool success = vm_do_claim_page(page);
+	// sema_up(&handle_fault_sema);
+	return success;
 }
 
 /* Free the page.
@@ -300,14 +346,27 @@ bool vm_claim_page(void *va UNUSED)
 static bool vm_do_claim_page(struct page *page)
 {
 	struct frame *frame = vm_get_frame();
-	/* Set links */
-	frame->page = page;
-	page->frame = frame;
 	struct thread *curr = thread_current();
-	pml4_set_page(curr->pml4, page->va, frame->kva, page->writable);
+	/* Set links */
+	if (page->frame != NULL)
+	{
+		// printf("여긴가\n");
+		page->frame->kva = frame->kva;
+		free(frame);
+	}
+	else
+	{
+		// printf("%s 여기다: %p\n", curr->name, page->va);
+
+		frame->page = page;
+		page->frame = frame;
+		list_push_back(&frame->page_list, &page->frame_page_list_elem);
+	}
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
-	return swap_in(page, frame->kva);
+	list_push_back(&vm_frame_table, &page->frame->elem);
+	pml4_set_page(curr->pml4, page->va, page->frame->kva, page->writable);
+	return swap_in(page, page->frame->kva);
 }
 
 unsigned
@@ -367,6 +426,8 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED, st
 			p->frame->link_cnt++;
 			copy_page->frame = copy_frame;
 			copy_frame->page = copy_page;
+			list_push_back(&p->frame->page_list, &copy_page->frame_page_list_elem);
+
 			if (page_get_type(p) == VM_FILE)
 				copy_page->file.file = file_duplicate(p->file.file);
 

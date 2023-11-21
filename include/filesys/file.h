@@ -27,6 +27,9 @@ off_t file_read_at (struct file *, void *, off_t size, off_t start);
 off_t file_write (struct file *, const void *, off_t);
 off_t file_write_at (struct file *, const void *, off_t size, off_t start);
 
+off_t filesys_read(struct file *file, void *buffer, off_t size);
+off_t filesys_write(struct file *file, void *buffer, off_t size);
+
 /* inode 락 반환 함수 */
 struct lock* file_get_inode_lock(struct file *file);
 int file_inc_open_cnt(struct file *file);

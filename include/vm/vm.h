@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include "threads/palloc.h"
 #include "threads/mmu.h"
+#include "devices/disk.h"
 #include "list.h"
 #include "hash.h"
 
@@ -67,6 +68,10 @@ struct page {
 	/* Your implementation */
 	/* 해시테이블에 기록하기 위한 elem */
 	struct hash_elem hash_elem;
+
+	/* frame 내부의 페이지 리스트에 연결될 elem */
+	struct list_elem frame_page_list_elem;
+
 	bool writable;
 
 	/* Per-type data are binded into the union.
@@ -84,8 +89,10 @@ struct page {
 /* The representation of "frame" */
 struct frame {
 	void *kva;
+	struct list page_list;
 	struct page *page;
 	int link_cnt;
+	disk_sector_t start_sector;
 	struct list_elem elem;
 };
 

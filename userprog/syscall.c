@@ -180,19 +180,25 @@ static int fd_read(int fd, void *buffer, size_t size)
 	if (curr->fdt[fd].file == NULL)
 		return -1;
 	lock_acquire(file_get_inode_lock(curr->fdt[fd].file));
-	
+
 	void *upage = pg_round_down(buffer);
 	/* read 시스템콜 시 cow의 프레임 분할을 위한 페이지 폴트 발생 */
-	for (off_t left = file_length(curr->fdt[fd].file); left > 0; left -= PGSIZE, upage += PGSIZE)
-	{
-		struct page *page = spt_find_page(spt, upage);
-		if (page == NULL || page->frame == NULL)
-			continue;
-		uint64_t *pte = pml4e_walk(curr->pml4, upage, 0);
-		if (page->writable == true && is_writable(pte) == 0)
-			vm_try_handle_fault(NULL, upage, 0, 0, 0);
-	}
-	read_size = file_read(curr->fdt[fd].file, buffer, size);
+	// for (off_t left = file_length(curr->fdt[fd].file); left > 0; left -= PGSIZE, upage += PGSIZE)
+	// for (size_t left = file_length(curr->fdt[fd].file); left > 0; left -= PGSIZE, upage += PGSIZE)
+	// {
+	// 	struct page *page = spt_find_page(spt, upage);
+	// 	if (page == NULL || page->frame == NULL)
+	// 		continue;
+	// 	uint64_t *pte = pml4e_walk(curr->pml4, upage, 0);
+	// 	if (page->writable == false)
+	// 	{
+	// 		sema_up(&syscall_sema);
+	// 		exit(-1);
+	// 	}
+	// 	if (pte != NULL && is_writable(pte) == 0)
+	// 		vm_try_handle_fault(NULL, upage, 0, 0, 0);
+	// }
+	read_size = filesys_read(curr->fdt[fd].file, buffer, size);
 	lock_release(file_get_inode_lock(curr->fdt[fd].file));
 	return read_size;
 }
@@ -229,7 +235,7 @@ static int fd_write(int fd, char *buffer, unsigned size)
 	else
 	{
 		lock_acquire(file_get_inode_lock(curr->fdt[fd].file));
-		write_size = file_write(curr->fdt[fd].file, buffer, size);
+		write_size =  filesys_write(curr->fdt[fd].file, buffer, size);
 		lock_release(file_get_inode_lock(curr->fdt[fd].file));
 		return write_size;
 	}

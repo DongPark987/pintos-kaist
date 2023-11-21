@@ -46,7 +46,6 @@ file_backed_swap_in(struct page *page, void *kva)
 
 	off_t offset = page->file.offset;
 	bool writable = page->writable;
-
 	/* 오프셋이 파일의 전체 길이보다 작은 경우만 read */
 	if (offset <= file_length(file))
 	{
@@ -58,6 +57,11 @@ file_backed_swap_in(struct page *page, void *kva)
 		file_read_at(file, kpage, page_read_bytes, offset);
 	}
 
+	// if (page->frame->link_cnt == 0)
+	// 	pml4_set_page(curr->pml4, page->va, kva, page->writable);
+	// else
+	// 	pml4_set_page(curr->pml4, page->va, kva, false);
+
 	return true;
 }
 
@@ -67,6 +71,8 @@ file_backed_swap_out(struct page *page)
 {
 	struct file_page *file_page UNUSED = &page->file;
 	struct thread *curr = thread_current();
+	// printf("스아웃\n");
+
 	struct supplemental_page_table *spt = &curr->spt;
 	// struct file *file = page->file.head_page == NULL ? page->file.file : spt_find_page(spt, page->va)->file.file;
 	struct file *file = page->file.file != NULL ? page->file.file : page->file.head_page->file.file;
@@ -78,8 +84,9 @@ file_backed_swap_out(struct page *page)
 		file_write(file, page->va, page->file.page_length);
 	}
 	pml4_clear_page(curr->pml4, page->va);
-	page->frame->page = NULL;
-	page->frame = NULL;
+	page->frame->page = page;
+	// page->frame->page = NULL;
+	// page->frame = NULL;
 	return true;
 }
 
@@ -162,12 +169,17 @@ static void do_file_backed_destroy(struct page *page, bool spt_hash_delete)
 		if (curr_page == NULL)
 			curr_page = page;
 
+		/* uninit 상태 vm_file 고려 */
 		if (curr_page->frame != NULL)
 		{
-			if (pml4_is_dirty(curr->pml4, upage))
-				file_write_at(file, curr_page->va, page_destroy_bytes, curr_page->file.offset);
+			/* 물리 공간이 할당되어 있는경우 */
+			if (curr_page->frame->kva != NULL)
+			{
+				if (pml4_is_dirty(curr->pml4, upage))
+					file_write_at(file, curr_page->va, page_destroy_bytes, curr_page->file.offset);
+				pml4_clear_page(curr->pml4, upage);
+			}
 
-			pml4_clear_page(curr->pml4, upage);
 			if (curr_page->frame->link_cnt == 0)
 			{
 				palloc_free_page(curr_page->frame->kva);
@@ -175,6 +187,7 @@ static void do_file_backed_destroy(struct page *page, bool spt_hash_delete)
 			}
 			else
 			{
+				list_remove(&curr_page->frame_page_list_elem);
 				curr_page->frame->link_cnt--;
 			}
 		}
@@ -189,7 +202,7 @@ static void do_file_backed_destroy(struct page *page, bool spt_hash_delete)
 		/* spt_kill을 통해 순회 제거중인 경우 임의로 페이지를 제거하지 않고 va값만 0으로 변경 */
 		else
 			curr_page->va = 0;
-			
+
 		destroy_bytes -= page_destroy_bytes;
 		upage += PGSIZE;
 	}
